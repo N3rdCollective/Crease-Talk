@@ -1,13 +1,29 @@
 import { Play } from 'lucide-react'
 import type { VideoItem } from '../data/content'
+import type { YouTubeVideo } from '../lib/youtube'
 
 type VideoCardProps = {
-  item: VideoItem
+  item: VideoItem | YouTubeVideo
   variant?: 'compact' | 'wide'
 }
 
+function isYouTubeVideo(item: VideoItem | YouTubeVideo): item is YouTubeVideo {
+  return 'thumbnail' in item && 'watchUrl' in item
+}
+
 export function VideoCard({ item, variant = 'compact' }: VideoCardProps) {
-  const isInterview = item.type === 'INTERVIEW'
+  const youtube = isYouTubeVideo(item)
+  const badge =
+    youtube
+      ? item.title.toLowerCase().includes('interview')
+        ? 'INTERVIEW'
+        : 'VIDEO'
+      : item.type
+  const isInterview = badge === 'INTERVIEW'
+  const href = youtube ? item.watchUrl : `#${item.id}`
+  const thumbnail = youtube ? item.thumbnail : undefined
+  const artist = item.artist
+  const title = item.title
 
   return (
     <article
@@ -17,36 +33,48 @@ export function VideoCard({ item, variant = 'compact' }: VideoCardProps) {
           : 'w-[240px] shrink-0 snap-start sm:w-[260px]'
       }`}
     >
-      <div className="relative aspect-[4/3] border-b border-ct-border bg-[#f5f5f5]">
+      <div className="relative aspect-[4/3] overflow-hidden border-b border-ct-border bg-[#f5f5f5]">
+        {thumbnail && (
+          <img
+            src={thumbnail}
+            alt={title}
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+            loading="lazy"
+          />
+        )}
         <span className="absolute top-3 left-3 z-10 bg-black px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase">
-          {item.type}
+          {badge}
         </span>
-        <button
-          type="button"
-          aria-label={`Play ${item.title}`}
-          className="absolute inset-0 flex items-center justify-center"
+        <a
+          href={href}
+          target={youtube ? '_blank' : undefined}
+          rel={youtube ? 'noopener noreferrer' : undefined}
+          aria-label={`Play ${title}`}
+          className="absolute inset-0 z-[1] flex items-center justify-center"
         >
           <span className="flex size-12 items-center justify-center rounded-full border border-black/20 bg-white/90 transition-transform group-hover:scale-105">
             <Play className="ml-0.5 size-5 fill-black text-black" strokeWidth={0} />
           </span>
-        </button>
+        </a>
       </div>
 
       <div className="flex flex-col gap-1 p-4">
         {isInterview ? (
           <h3 className="text-sm leading-snug font-extrabold tracking-tight uppercase">
-            {item.title}
+            {title}
           </h3>
         ) : (
           <>
             <h3 className="text-sm font-extrabold tracking-tight uppercase">
-              {item.artist}
+              {artist}
             </h3>
-            <p className="text-sm text-black/70">{item.title}</p>
+            <p className="line-clamp-2 text-sm text-black/70">{title}</p>
           </>
         )}
         <a
-          href={`#${item.id}`}
+          href={href}
+          target={youtube ? '_blank' : undefined}
+          rel={youtube ? 'noopener noreferrer' : undefined}
           className="mt-3 inline-flex text-xs font-bold tracking-wide uppercase transition-colors hover:text-ct-orange"
         >
           WATCH NOW →

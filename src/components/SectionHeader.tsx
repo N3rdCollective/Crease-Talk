@@ -19,6 +19,9 @@ export function SectionHeader({
       </div>
       <a
         href={href}
+        {...(href.startsWith('http')
+          ? { target: '_blank', rel: 'noopener noreferrer' }
+          : {})}
         className="shrink-0 text-xs font-bold tracking-wide uppercase transition-colors hover:text-ct-orange md:text-sm"
       >
         {linkLabel}
