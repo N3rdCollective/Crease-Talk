@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { getSession, isStaffUser, signInWithPassword } from '../lib/auth'
 import { supabase } from '../lib/supabase/client'
 
 export function AdminLoginPage() {
   const navigate = useNavigate()
-  const [email, setEmail] = useState('webmaster@creasetalk.com')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -94,6 +94,13 @@ export function AdminLoginPage() {
         >
           {loading ? 'Signing in…' : 'Sign in'}
         </button>
+
+        <Link
+          to="/admin/forgot-password"
+          className="mt-4 inline-block text-xs font-semibold text-white/60 uppercase hover:text-ct-orange"
+        >
+          Forgot password?
+        </Link>
       </form>
     </div>
   )

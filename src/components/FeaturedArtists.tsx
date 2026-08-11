@@ -67,27 +67,10 @@ export function FeaturedArtists() {
           <Carousel ariaLabel="Featured artists">
             {artists.map((artist) => {
               const genre = artist.genres[0] || 'Artist'
-              const href = artist.spotify_url || '/new-artists'
-              const external = Boolean(artist.spotify_url)
-
-              return external ? (
-                <a
-                  key={artist.id}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group flex w-[140px] shrink-0 snap-start flex-col items-center text-center sm:w-[160px]"
-                >
-                  <ArtistAvatar name={artist.name} imageUrl={artist.image_url} />
-                  <h3 className="mt-4 text-sm font-extrabold tracking-tight uppercase">
-                    {artist.name}
-                  </h3>
-                  <p className="mt-1 text-xs capitalize text-black/60">{genre}</p>
-                </a>
-              ) : (
+              return (
                 <Link
                   key={artist.id}
-                  to="/new-artists"
+                  to={`/artists/${artist.id}`}
                   className="group flex w-[140px] shrink-0 snap-start flex-col items-center text-center sm:w-[160px]"
                 >
                   <ArtistAvatar name={artist.name} imageUrl={artist.image_url} />

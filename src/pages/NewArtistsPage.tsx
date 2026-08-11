@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { PageHeader } from '../components/PageHeader'
 import {
   fetchAllArtists,
@@ -96,27 +97,14 @@ export function NewArtistsPage() {
                 </>
               )
 
-              if (artist.spotify_url) {
-                return (
-                  <a
-                    key={artist.id}
-                    href={artist.spotify_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex flex-col items-center text-center"
-                  >
-                    {content}
-                  </a>
-                )
-              }
-
               return (
-                <div
+                <Link
                   key={artist.id}
+                  to={`/artists/${artist.id}`}
                   className="group flex flex-col items-center text-center"
                 >
                   {content}
-                </div>
+                </Link>
               )
             })}
           </div>

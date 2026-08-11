@@ -8,7 +8,11 @@ import { NewArtistsPage } from './pages/NewArtistsPage'
 import { NewMusicPage } from './pages/NewMusicPage'
 import { OnesToWatchPage } from './pages/OnesToWatchPage'
 import { SubmitPage } from './pages/SubmitPage'
+import { ArtistProfilePage } from './pages/ArtistProfilePage'
 import { AdminLoginPage } from './admin/AdminLoginPage'
+import { AdminForgotPasswordPage } from './admin/AdminForgotPasswordPage'
+import { AdminResetPasswordPage } from './admin/AdminResetPasswordPage'
+import { AdminAccountPage } from './admin/AdminAccountPage'
 import { AdminLayout } from './admin/AdminLayout'
 import { RequireStaff } from './admin/RequireStaff'
 import { VideoQueuePage } from './admin/VideoQueuePage'
@@ -32,6 +36,14 @@ export default function App() {
       <Routes>
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route
+          path="/admin/forgot-password"
+          element={<AdminForgotPasswordPage />}
+        />
+        <Route
+          path="/admin/reset-password"
+          element={<AdminResetPasswordPage />}
+        />
+        <Route
           path="/admin"
           element={
             <RequireStaff>
@@ -43,6 +55,7 @@ export default function App() {
           <Route path="artists" element={<ArtistsAdminPage />} />
           <Route path="submissions" element={<SubmissionsAdminPage />} />
           <Route path="staff" element={<StaffPage />} />
+          <Route path="account" element={<AdminAccountPage />} />
         </Route>
 
         <Route
@@ -90,6 +103,14 @@ export default function App() {
           element={
             <PublicShell>
               <SubmitPage />
+            </PublicShell>
+          }
+        />
+        <Route
+          path="/artists/:artistId"
+          element={
+            <PublicShell>
+              <ArtistProfilePage />
             </PublicShell>
           }
         />

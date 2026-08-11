@@ -6,6 +6,7 @@ const links = [
   { to: '/admin/artists', label: 'Artists' },
   { to: '/admin/submissions', label: 'Submissions' },
   { to: '/admin/staff', label: 'Staff' },
+  { to: '/admin/account', label: 'Account' },
 ]
 
 export function AdminLayout() {

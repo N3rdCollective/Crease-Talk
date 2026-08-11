@@ -13,25 +13,32 @@ type Submission = {
   artist_name: string
   track_title: string
   contact_email: string
+  genre: string | null
+  instagram_url: string | null
+  spotify_url: string | null
   audio_file_path: string | null
   audio_file_url: string | null
+  cover_file_path: string | null
   notes: string | null
   status: 'pending' | 'under_review' | 'approved' | 'rejected'
   created_at: string
 }
 
+type SignedBundle = { audio?: string; cover?: string }
+
 export function SubmissionsAdminPage() {
   const [rows, setRows] = useState<Submission[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
-  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
+  const [signed, setSigned] = useState<Record<string, SignedBundle>>({})
+  const [busyId, setBusyId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     const { data, error } = await supabase
       .from('music_submissions')
       .select(
-        'id, artist_name, track_title, contact_email, audio_file_path, audio_file_url, notes, status, created_at',
+        'id, artist_name, track_title, contact_email, genre, instagram_url, spotify_url, audio_file_path, audio_file_url, cover_file_path, notes, status, created_at',
       )
       .order('created_at', { ascending: false })
     if (error) setMessage(error.message)
@@ -46,15 +53,24 @@ export function SubmissionsAdminPage() {
   useEffect(() => {
     let cancelled = false
     async function sign() {
-      const next: Record<string, string> = {}
+      const next: Record<string, SignedBundle> = {}
       for (const row of rows) {
-        if (!row.audio_file_path) continue
-        const { data } = await supabase.storage
-          .from('music-submissions')
-          .createSignedUrl(row.audio_file_path, 3600)
-        if (data?.signedUrl) next[row.id] = data.signedUrl
+        const bundle: SignedBundle = {}
+        if (row.audio_file_path) {
+          const { data } = await supabase.storage
+            .from('music-submissions')
+            .createSignedUrl(row.audio_file_path, 3600)
+          if (data?.signedUrl) bundle.audio = data.signedUrl
+        }
+        if (row.cover_file_path) {
+          const { data } = await supabase.storage
+            .from('music-submissions')
+            .createSignedUrl(row.cover_file_path, 3600)
+          if (data?.signedUrl) bundle.cover = data.signedUrl
+        }
+        next[row.id] = bundle
       }
-      if (!cancelled) setSignedUrls(next)
+      if (!cancelled) setSigned(next)
     }
     void sign()
     return () => {
@@ -62,10 +78,9 @@ export function SubmissionsAdminPage() {
     }
   }, [rows])
 
-  const setStatus = async (
-    id: string,
-    status: Submission['status'],
-  ) => {
+  const setStatus = async (id: string, status: Submission['status']) => {
+    setBusyId(id)
+    setMessage(null)
     const { error } = await supabase
       .from('music_submissions')
       .update({
@@ -75,38 +90,95 @@ export function SubmissionsAdminPage() {
       .eq('id', id)
     if (error) setMessage(error.message)
     else await load()
+    setBusyId(null)
   }
 
-  const promote = async (id: string) => {
+  const approve = async (id: string) => {
+    setBusyId(id)
     setMessage(null)
     const { data, error } = await supabase.functions.invoke(
       'promote-submission',
       { body: { submissionId: id } },
     )
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-    setMessage(`Promoted — media ${data?.mediaAssetId ?? ''}`)
+    if (error) setMessage(error.message)
+    else setMessage(`Approved & promoted — media ${data?.mediaAssetId ?? ''}`)
     await load()
+    setBusyId(null)
   }
 
   const columns = useMemo<ColumnDef<Submission>[]>(
     () => [
       {
+        id: 'cover',
+        header: '',
+        cell: ({ row }) => {
+          const cover = signed[row.original.id]?.cover
+          return cover ? (
+            <img src={cover} alt="" className="h-12 w-12 object-cover" />
+          ) : (
+            <div className="h-12 w-12 bg-neutral-200" />
+          )
+        },
+      },
+      {
         accessorKey: 'created_at',
         header: 'Received',
         cell: ({ getValue }) =>
-          new Date(getValue<string>()).toLocaleString(),
+          new Date(getValue<string>()).toLocaleDateString(),
       },
-      { accessorKey: 'artist_name', header: 'Artist' },
-      { accessorKey: 'track_title', header: 'Track' },
-      { accessorKey: 'contact_email', header: 'Email' },
+      {
+        id: 'meta',
+        header: 'Submission',
+        cell: ({ row }) => (
+          <div className="min-w-[160px]">
+            <p className="font-bold">{row.original.track_title}</p>
+            <p className="text-xs text-neutral-600">
+              {row.original.artist_name}
+              {row.original.genre ? ` · ${row.original.genre}` : ''}
+            </p>
+            <p className="text-[11px] text-neutral-500">
+              {row.original.contact_email}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: 'socials',
+        header: 'Links',
+        cell: ({ row }) => (
+          <div className="flex flex-col gap-1 text-[10px] font-bold uppercase">
+            {row.original.instagram_url && (
+              <a
+                href={row.original.instagram_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ct-orange"
+              >
+                IG
+              </a>
+            )}
+            {row.original.spotify_url && (
+              <a
+                href={row.original.spotify_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-ct-orange"
+              >
+                Spotify
+              </a>
+            )}
+            {!row.original.instagram_url && !row.original.spotify_url && (
+              <span className="text-neutral-400">—</span>
+            )}
+          </div>
+        ),
+      },
       {
         id: 'audio',
         header: 'Preview',
         cell: ({ row }) => {
-          const url = signedUrls[row.original.id] || row.original.audio_file_url
+          const url =
+            signed[row.original.id]?.audio || row.original.audio_file_url
           if (!url) return <span className="text-neutral-400">—</span>
           return (
             <audio controls preload="none" className="h-8 max-w-[220px]">
@@ -123,34 +195,32 @@ export function SubmissionsAdminPage() {
       {
         id: 'actions',
         header: 'Actions',
-        cell: ({ row }) => (
-          <div className="flex flex-wrap gap-1">
-            <button
-              type="button"
-              className="rounded bg-sky-600 px-2 py-1 text-[10px] font-bold text-white uppercase"
-              onClick={() => void setStatus(row.original.id, 'under_review')}
-            >
-              Review
-            </button>
-            <button
-              type="button"
-              className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white uppercase"
-              onClick={() => void promote(row.original.id)}
-            >
-              Promote
-            </button>
-            <button
-              type="button"
-              className="rounded bg-red-600 px-2 py-1 text-[10px] font-bold text-white uppercase"
-              onClick={() => void setStatus(row.original.id, 'rejected')}
-            >
-              Reject
-            </button>
-          </div>
-        ),
+        cell: ({ row }) => {
+          const busy = busyId === row.original.id
+          return (
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white uppercase disabled:opacity-50"
+                onClick={() => void approve(row.original.id)}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className="rounded bg-red-600 px-2 py-1 text-[10px] font-bold text-white uppercase disabled:opacity-50"
+                onClick={() => void setStatus(row.original.id, 'rejected')}
+              >
+                Reject
+              </button>
+            </div>
+          )
+        },
       },
     ],
-    [signedUrls],
+    [signed, busyId],
   )
 
   const table = useReactTable({
@@ -162,10 +232,11 @@ export function SubmissionsAdminPage() {
   return (
     <div>
       <h2 className="text-2xl font-black tracking-tight uppercase">
-        Music submissions
+        A&R review queue
       </h2>
       <p className="mt-1 text-sm text-neutral-500">
-        Review audio, update status, or one-click promote into the catalog.
+        Cover art, inline audio, and one-click approve/reject for incoming
+        submissions.
       </p>
       {message && <p className="mt-4 text-sm text-neutral-600">{message}</p>}
 
