@@ -1,25 +1,23 @@
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
-import { Hero } from './components/Hero'
-import { TheLatest } from './components/TheLatest'
-import { Discover } from './components/Discover'
-import { FeaturedArtists } from './components/FeaturedArtists'
-import { Radio } from './components/Radio'
-import { LatestInterviews } from './components/LatestInterviews'
 import { Footer } from './components/Footer'
+import { HomePage } from './pages/HomePage'
+import { VideosPage } from './pages/VideosPage'
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-white">
-      <Navbar />
-      <main>
-        <Hero />
-        <TheLatest />
-        <Discover />
-        <FeaturedArtists />
-        <Radio />
-        <LatestInterviews />
-      </main>
-      <Footer />
-    </div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-white">
+        <Navbar />
+        <main>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/videos" element={<VideosPage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
+    </BrowserRouter>
   )
 }

@@ -20,13 +20,13 @@ export type DiscoverItem = {
 }
 
 export const navLinks = [
-  { label: 'HOME', href: '#home' },
-  { label: 'DISCOVER', href: '#discover' },
-  { label: 'ARTISTS', href: '#artists' },
-  { label: 'VIDEOS', href: '#latest' },
-  { label: 'MUSIC', href: '#radio' },
-  { label: 'INTERVIEWS', href: '#interviews' },
-  { label: 'SUBMIT MUSIC', href: '#submit' },
+  { label: 'HOME', href: '/#home' },
+  { label: 'DISCOVER', href: '/#discover' },
+  { label: 'ARTISTS', href: '/#artists' },
+  { label: 'VIDEOS', href: '/videos' },
+  { label: 'MUSIC', href: '/#radio' },
+  { label: 'INTERVIEWS', href: '/#interviews' },
+  { label: 'SUBMIT MUSIC', href: '/#submit' },
 ] as const
 
 export const latestVideos: VideoItem[] = [

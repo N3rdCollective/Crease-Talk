@@ -201,7 +201,11 @@ export function youtubeEmbedUrl(videoId: string, autoplay = false) {
     rel: '0',
     modestbranding: '1',
     playsinline: '1',
+    enablejsapi: '1',
     autoplay: autoplay ? '1' : '0',
   })
+  if (typeof window !== 'undefined') {
+    params.set('origin', window.location.origin)
+  }
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
 }

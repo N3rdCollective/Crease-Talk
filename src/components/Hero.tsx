@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Maximize, Play } from 'lucide-react'
 import {
   fetchLatestChannelVideo,
@@ -14,6 +14,7 @@ function formatTime(seconds: number) {
 }
 
 export function Hero() {
+  const playerRef = useRef<HTMLDivElement>(null)
   const [video, setVideo] = useState<YouTubeVideo | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,8 +42,14 @@ export function Hero() {
   }, [])
 
   const openFullscreen = () => {
-    if (!video) return
-    window.open(`https://www.youtube.com/watch?v=${video.id}`, '_blank', 'noopener,noreferrer')
+    const el = playerRef.current
+    if (!el) return
+    if (!playing) setPlaying(true)
+    if (document.fullscreenElement) {
+      void document.exitFullscreen()
+    } else {
+      void el.requestFullscreen()
+    }
   }
 
   return (
@@ -81,13 +88,16 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="relative aspect-video w-full overflow-hidden border border-white/15 bg-[#1a1a1a]">
+        <div
+          ref={playerRef}
+          className="relative aspect-video w-full overflow-hidden border border-white/15 bg-[#1a1a1a]"
+        >
           {playing && video ? (
             <iframe
               title={video.title}
               src={youtubeEmbedUrl(video.id, true)}
               className="absolute inset-0 h-full w-full"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
               allowFullScreen
             />
           ) : (
@@ -142,7 +152,7 @@ export function Hero() {
                     type="button"
                     onClick={openFullscreen}
                     disabled={!video}
-                    aria-label="Watch on YouTube"
+                    aria-label="Fullscreen"
                     className="p-0.5 disabled:opacity-50"
                   >
                     <Maximize className="size-4" />

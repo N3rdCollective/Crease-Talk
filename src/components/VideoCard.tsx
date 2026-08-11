@@ -5,34 +5,54 @@ import type { YouTubeVideo } from '../lib/youtube'
 type VideoCardProps = {
   item: VideoItem | YouTubeVideo
   variant?: 'compact' | 'wide'
+  layout?: 'carousel' | 'grid'
+  badge?: 'VIDEO' | 'INTERVIEW'
+  onPlay?: (video: YouTubeVideo) => void
 }
 
 function isYouTubeVideo(item: VideoItem | YouTubeVideo): item is YouTubeVideo {
   return 'thumbnail' in item && 'watchUrl' in item
 }
 
-export function VideoCard({ item, variant = 'compact' }: VideoCardProps) {
+export function VideoCard({
+  item,
+  variant = 'compact',
+  layout = 'carousel',
+  badge: badgeOverride,
+  onPlay,
+}: VideoCardProps) {
   const youtube = isYouTubeVideo(item)
   const badge =
-    youtube
+    badgeOverride ||
+    (youtube
       ? item.title.toLowerCase().includes('interview')
         ? 'INTERVIEW'
         : 'VIDEO'
-      : item.type
-  const isInterview = badge === 'INTERVIEW'
-  const href = youtube ? item.watchUrl : `#${item.id}`
+      : item.type)
+  const isInterview = !youtube && badge === 'INTERVIEW'
   const thumbnail = youtube ? item.thumbnail : undefined
   const artist = item.artist
   const title = item.title
 
+  const handlePlay = () => {
+    if (youtube && onPlay) {
+      onPlay(item)
+      return
+    }
+    if (!youtube) {
+      window.location.hash = item.id
+    }
+  }
+
+  const sizeClass =
+    layout === 'grid'
+      ? 'w-full'
+      : variant === 'wide'
+        ? 'w-[280px] shrink-0 snap-start sm:w-[300px] md:w-auto md:shrink'
+        : 'w-[240px] shrink-0 snap-start sm:w-[260px]'
+
   return (
-    <article
-      className={`group border border-ct-border bg-white ${
-        variant === 'wide'
-          ? 'w-[280px] shrink-0 snap-start sm:w-[300px] md:w-auto md:shrink'
-          : 'w-[240px] shrink-0 snap-start sm:w-[260px]'
-      }`}
-    >
+    <article className={`group border border-ct-border bg-white ${sizeClass}`}>
       <div className="relative aspect-[4/3] overflow-hidden border-b border-ct-border bg-[#f5f5f5]">
         {thumbnail && (
           <img
@@ -45,17 +65,16 @@ export function VideoCard({ item, variant = 'compact' }: VideoCardProps) {
         <span className="absolute top-3 left-3 z-10 bg-black px-2 py-1 text-[10px] font-bold tracking-wider text-white uppercase">
           {badge}
         </span>
-        <a
-          href={href}
-          target={youtube ? '_blank' : undefined}
-          rel={youtube ? 'noopener noreferrer' : undefined}
+        <button
+          type="button"
+          onClick={handlePlay}
           aria-label={`Play ${title}`}
           className="absolute inset-0 z-[1] flex items-center justify-center"
         >
           <span className="flex size-12 items-center justify-center rounded-full border border-black/20 bg-white/90 transition-transform group-hover:scale-105">
             <Play className="ml-0.5 size-5 fill-black text-black" strokeWidth={0} />
           </span>
-        </a>
+        </button>
       </div>
 
       <div className="flex flex-col gap-1 p-4">
@@ -71,14 +90,13 @@ export function VideoCard({ item, variant = 'compact' }: VideoCardProps) {
             <p className="line-clamp-2 text-sm text-black/70">{title}</p>
           </>
         )}
-        <a
-          href={href}
-          target={youtube ? '_blank' : undefined}
-          rel={youtube ? 'noopener noreferrer' : undefined}
-          className="mt-3 inline-flex text-xs font-bold tracking-wide uppercase transition-colors hover:text-ct-orange"
+        <button
+          type="button"
+          onClick={handlePlay}
+          className="mt-3 inline-flex text-left text-xs font-bold tracking-wide uppercase transition-colors hover:text-ct-orange"
         >
           WATCH NOW →
-        </a>
+        </button>
       </div>
     </article>
   )

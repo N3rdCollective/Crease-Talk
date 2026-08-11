@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { ArrowRight, Mail } from 'lucide-react'
 import { Logo } from './Logo'
 
@@ -38,12 +39,12 @@ function TikTokIcon({ className }: IconProps) {
 }
 
 const explore = [
-  { label: 'Discover', href: '#discover' },
-  { label: 'Artists', href: '#artists' },
-  { label: 'Videos', href: '#latest' },
-  { label: 'Music', href: '#radio' },
-  { label: 'Interviews', href: '#interviews' },
-  { label: 'Submit Music', href: '#submit' },
+  { label: 'Discover', href: '/#discover' },
+  { label: 'Artists', href: '/#artists' },
+  { label: 'Videos', href: '/videos' },
+  { label: 'Music', href: '/#radio' },
+  { label: 'Interviews', href: '/#interviews' },
+  { label: 'Submit Music', href: '/#submit' },
 ]
 
 const company = [
@@ -80,12 +81,12 @@ export function Footer() {
             <ul className="mt-4 space-y-2.5">
               {explore.map((item) => (
                 <li key={item.label}>
-                  <a
-                    href={item.href}
+                  <Link
+                    to={item.href}
                     className="text-sm text-white/70 transition-colors hover:text-ct-orange"
                   >
                     {item.label}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
