@@ -11,11 +11,12 @@ export type SpotifyCandidate = {
 }
 
 type Props = {
-  artistId: string
-  artistName: string
-  currentSpotifyUrl: string | null
+  mode?: 'fix' | 'add'
+  artistId?: string
+  artistName?: string
+  currentSpotifyUrl?: string | null
   onClose: () => void
-  onLinked: () => void
+  onLinked: (artistName?: string) => void
 }
 
 function formatFollowers(n: number) {
@@ -25,18 +26,21 @@ function formatFollowers(n: number) {
 }
 
 export function SpotifyFixPanel({
+  mode = 'fix',
   artistId,
-  artistName,
-  currentSpotifyUrl,
+  artistName = '',
+  currentSpotifyUrl = null,
   onClose,
   onLinked,
 }: Props) {
+  const isAdd = mode === 'add'
   const [linkInput, setLinkInput] = useState(currentSpotifyUrl ?? '')
   const [searchQuery, setSearchQuery] = useState(artistName)
   const [results, setResults] = useState<SpotifyCandidate[]>([])
   const [busy, setBusy] = useState<'search' | 'link' | string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [useSpotifyName, setUseSpotifyName] = useState(false)
+  // Sync/link should adopt Spotify spelling by default
+  const [useSpotifyName, setUseSpotifyName] = useState(true)
 
   async function runSearch() {
     const q = searchQuery.trim()
@@ -61,22 +65,29 @@ export function SpotifyFixPanel({
     }
   }
 
-  async function applyLink(spotifyIdOrUrl: string) {
+  async function applyLink(spotifyIdOrUrl: string, candidateName?: string) {
     setBusy(spotifyIdOrUrl)
     setError(null)
     try {
-      const looksLikeId = /^[a-zA-Z0-9]{22}$/.test(spotifyIdOrUrl.trim())
-      const body = looksLikeId
-        ? {
-            artistId,
-            spotifyId: spotifyIdOrUrl.trim(),
-            keepName: !useSpotifyName,
-          }
-        : {
-            artistId,
-            spotifyUrl: spotifyIdOrUrl.trim(),
-            keepName: !useSpotifyName,
-          }
+      const trimmed = spotifyIdOrUrl.trim()
+      const looksLikeId = /^[a-zA-Z0-9]{22}$/.test(trimmed)
+      const keepName = isAdd ? false : !useSpotifyName
+
+      const body: Record<string, unknown> = {
+        force: true,
+        keepName,
+      }
+
+      if (looksLikeId) body.spotifyId = trimmed
+      else body.spotifyUrl = trimmed
+
+      if (isAdd) {
+        const name = candidateName?.trim() || searchQuery.trim()
+        if (name) body.name = name
+        // Link-only add is supported by the edge function via spotifyId/Url
+      } else {
+        body.artistId = artistId
+      }
 
       const { data, error: fnError } = await supabase.functions.invoke(
         'spotify-enrich-artist',
@@ -84,7 +95,7 @@ export function SpotifyFixPanel({
       )
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
-      onLinked()
+      onLinked(data?.artist?.name ?? candidateName)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Link failed')
       setBusy(null)
@@ -101,13 +112,13 @@ export function SpotifyFixPanel({
         <div className="flex items-start justify-between border-b border-neutral-100 px-5 py-4">
           <div>
             <p className="text-[10px] font-bold tracking-[0.18em] text-ct-orange uppercase">
-              Correct match
+              {isAdd ? 'New artist' : 'Correct match'}
             </p>
             <h3
               id="spotify-fix-title"
               className="mt-1 text-lg font-black tracking-tight uppercase"
             >
-              Fix Spotify — {artistName}
+              {isAdd ? 'Add artist' : `Fix Spotify — ${artistName}`}
             </h3>
           </div>
           <button
@@ -120,14 +131,16 @@ export function SpotifyFixPanel({
         </div>
 
         <div className="space-y-6 px-5 py-5">
-          <label className="flex items-center gap-2 text-xs text-neutral-600">
-            <input
-              type="checkbox"
-              checked={useSpotifyName}
-              onChange={(e) => setUseSpotifyName(e.target.checked)}
-            />
-            Also replace CreaseTalk name with Spotify artist name
-          </label>
+          {!isAdd && (
+            <label className="flex items-center gap-2 text-xs text-neutral-600">
+              <input
+                type="checkbox"
+                checked={useSpotifyName}
+                onChange={(e) => setUseSpotifyName(e.target.checked)}
+              />
+              Also replace CreaseTalk name with Spotify artist name
+            </label>
+          )}
 
           <section>
             <h4 className="text-xs font-bold tracking-wide uppercase">
@@ -149,7 +162,7 @@ export function SpotifyFixPanel({
                 onClick={() => void applyLink(linkInput)}
                 className="shrink-0 bg-black px-3 py-2 text-[10px] font-bold text-white uppercase disabled:opacity-50"
               >
-                {busy === linkInput || busy === 'link' ? '…' : 'Apply'}
+                {busy === linkInput || busy === 'link' ? '…' : isAdd ? 'Add' : 'Apply'}
               </button>
             </div>
           </section>
@@ -160,6 +173,7 @@ export function SpotifyFixPanel({
             </h4>
             <div className="mt-2 flex gap-2">
               <input
+                autoFocus={isAdd}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => {
@@ -168,6 +182,7 @@ export function SpotifyFixPanel({
                     void runSearch()
                   }
                 }}
+                placeholder={isAdd ? 'Search by artist name' : undefined}
                 className="min-w-0 flex-1 border border-neutral-300 px-3 py-2 text-sm"
               />
               <button
@@ -205,16 +220,16 @@ export function SpotifyFixPanel({
                   <button
                     type="button"
                     disabled={Boolean(busy)}
-                    onClick={() => void applyLink(c.id)}
+                    onClick={() => void applyLink(c.id, c.name)}
                     className="shrink-0 rounded bg-black px-2 py-1 text-[10px] font-bold text-white uppercase disabled:opacity-50"
                   >
-                    {busy === c.id ? '…' : 'Use'}
+                    {busy === c.id ? '…' : isAdd ? 'Add' : 'Use'}
                   </button>
                 </li>
               ))}
               {results.length === 0 && (
                 <li className="px-3 py-4 text-xs text-neutral-400">
-                  Search to see candidates, then click Use.
+                  Search to see candidates, then click {isAdd ? 'Add' : 'Use'}.
                 </li>
               )}
             </ul>

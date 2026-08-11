@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   flexRender,
   getCoreRowModel,
@@ -14,21 +15,26 @@ type ArtistAdmin = {
   name: string
   spotify_id: string | null
   image_url: string | null
+  image_locked: boolean
   genres: string[]
   followers: number
   spotify_url: string | null
-  youtube_channel_id: string | null
   is_verified: boolean
   is_featured: boolean
   display_order: number
-  bio: string | null
+}
+
+function formatFollowers(n: number) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return String(n)
 }
 
 export function ArtistsAdminPage() {
   const [rows, setRows] = useState<ArtistAdmin[]>([])
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState<string | null>(null)
-  const [newName, setNewName] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
   const [fixArtist, setFixArtist] = useState<ArtistAdmin | null>(null)
 
   const load = useCallback(async () => {
@@ -36,7 +42,7 @@ export function ArtistsAdminPage() {
     const { data, error } = await supabase
       .from('artists')
       .select(
-        'id, name, spotify_id, image_url, genres, followers, spotify_url, youtube_channel_id, is_verified, is_featured, display_order, bio',
+        'id, name, spotify_id, image_url, image_locked, genres, followers, spotify_url, is_verified, is_featured, display_order',
       )
       .order('display_order', { ascending: true })
     if (error) setMessage(error.message)
@@ -66,48 +72,27 @@ export function ArtistsAdminPage() {
       },
       {
         accessorKey: 'name',
-        header: 'Name',
+        header: 'Artist',
         cell: ({ row }) => (
-          <input
-            className="border border-neutral-200 px-2 py-1 text-sm"
-            defaultValue={row.original.name}
-            onBlur={(e) => {
-              const name = e.target.value.trim()
-              if (name && name !== row.original.name) {
-                void supabase
-                  .from('artists')
-                  .update({ name })
-                  .eq('id', row.original.id)
-                  .then(load)
-              }
-            }}
-          />
-        ),
-      },
-      {
-        accessorKey: 'youtube_channel_id',
-        header: 'YT Channel ID',
-        cell: ({ row }) => (
-          <input
-            className="min-w-[140px] border border-neutral-200 px-2 py-1 text-sm"
-            defaultValue={row.original.youtube_channel_id ?? ''}
-            placeholder="UCxxxx"
-            onBlur={(e) => {
-              const youtube_channel_id = e.target.value.trim() || null
-              void supabase
-                .from('artists')
-                .update({ youtube_channel_id })
-                .eq('id', row.original.id)
-                .then(load)
-            }}
-          />
+          <div>
+            <Link
+              to={`/admin/artists/${row.original.id}`}
+              className="font-bold text-black underline-offset-2 hover:underline"
+            >
+              {row.original.name}
+            </Link>
+            {row.original.image_locked && (
+              <p className="mt-1 text-[9px] font-bold tracking-wide text-neutral-400 uppercase">
+                Custom image
+              </p>
+            )}
+          </div>
         ),
       },
       {
         accessorKey: 'followers',
         header: 'Followers',
-        cell: ({ getValue }) =>
-          Number(getValue<number>()).toLocaleString(),
+        cell: ({ getValue }) => formatFollowers(Number(getValue<number>())),
       },
       {
         accessorKey: 'is_verified',
@@ -116,12 +101,16 @@ export function ArtistsAdminPage() {
           <input
             type="checkbox"
             checked={row.original.is_verified}
+            aria-label={`Verified ${row.original.name}`}
             onChange={(e) => {
               void supabase
                 .from('artists')
                 .update({ is_verified: e.target.checked })
                 .eq('id', row.original.id)
-                .then(load)
+                .then(({ error }) => {
+                  if (error) setMessage(error.message)
+                  else void load()
+                })
             }}
           />
         ),
@@ -133,12 +122,16 @@ export function ArtistsAdminPage() {
           <input
             type="checkbox"
             checked={row.original.is_featured}
+            aria-label={`Featured ${row.original.name}`}
             onChange={(e) => {
               void supabase
                 .from('artists')
                 .update({ is_featured: e.target.checked })
                 .eq('id', row.original.id)
-                .then(load)
+                .then(({ error }) => {
+                  if (error) setMessage(error.message)
+                  else void load()
+                })
             }}
           />
         ),
@@ -146,75 +139,79 @@ export function ArtistsAdminPage() {
       {
         id: 'spotify',
         header: 'Spotify',
-        cell: ({ row }) => (
-          <div className="flex flex-col gap-1">
-            {row.original.spotify_url ? (
-              <a
-                href={row.original.spotify_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="max-w-[140px] truncate text-[10px] text-ct-orange underline"
-              >
-                Open Spotify
-              </a>
-            ) : (
-              <span className="text-[10px] text-neutral-400">No link</span>
-            )}
-            <div className="flex gap-1">
-              <button
-                type="button"
-                className="rounded bg-black px-2 py-1 text-[10px] font-bold text-white uppercase"
-                onClick={() => {
-                  setMessage(null)
-                  void supabase.functions
-                    .invoke('spotify-enrich-artist', {
-                      body: { artistId: row.original.id, force: true },
-                    })
-                    .then(({ error }) => {
-                      if (error) throw error
-                      setMessage(`Synced ${row.original.name}`)
-                      return load()
-                    })
-                    .catch((err: unknown) => {
-                      setMessage(
-                        err instanceof Error
-                          ? err.message
-                          : 'Spotify sync failed',
-                      )
-                    })
-                }}
-              >
-                Sync
-              </button>
-              <button
-                type="button"
-                className="rounded border border-neutral-300 bg-white px-2 py-1 text-[10px] font-bold uppercase"
-                onClick={() => setFixArtist(row.original)}
-              >
-                Fix
-              </button>
-            </div>
-          </div>
-        ),
+        cell: ({ row }) =>
+          row.original.spotify_id ? (
+            <span className="text-[10px] font-bold text-green-700 uppercase">
+              Linked
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold text-neutral-400 uppercase">
+              Not linked
+            </span>
+          ),
       },
       {
-        id: 'delete',
+        id: 'actions',
         header: '',
         cell: ({ row }) => (
-          <button
-            type="button"
-            className="text-[10px] font-bold text-red-600 uppercase"
-            onClick={() => {
-              if (!confirm(`Delete ${row.original.name}?`)) return
-              void supabase
-                .from('artists')
-                .delete()
-                .eq('id', row.original.id)
-                .then(load)
-            }}
-          >
-            Delete
-          </button>
+          <div className="flex flex-wrap justify-end gap-1">
+            <Link
+              to={`/admin/artists/${row.original.id}`}
+              className="rounded bg-ct-orange px-2 py-1 text-[10px] font-bold text-black uppercase"
+            >
+              Edit profile
+            </Link>
+            <button
+              type="button"
+              className="rounded bg-black px-2 py-1 text-[10px] font-bold text-white uppercase"
+              onClick={() => {
+                setMessage(null)
+                void supabase.functions
+                  .invoke('spotify-enrich-artist', {
+                    body: {
+                      artistId: row.original.id,
+                      force: true,
+                      keepName: false,
+                    },
+                  })
+                  .then(({ error }) => {
+                    if (error) throw error
+                    setMessage(`Synced ${row.original.name}`)
+                    return load()
+                  })
+                  .catch((err: unknown) => {
+                    setMessage(
+                      err instanceof Error
+                        ? err.message
+                        : 'Spotify sync failed',
+                    )
+                  })
+              }}
+            >
+              Sync
+            </button>
+            <button
+              type="button"
+              className="rounded border border-neutral-300 bg-white px-2 py-1 text-[10px] font-bold uppercase"
+              onClick={() => setFixArtist(row.original)}
+            >
+              Fix
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1 text-[10px] font-bold text-red-600 uppercase"
+              onClick={() => {
+                if (!confirm(`Delete ${row.original.name}?`)) return
+                void supabase
+                  .from('artists')
+                  .delete()
+                  .eq('id', row.original.id)
+                  .then(load)
+              }}
+            >
+              Delete
+            </button>
+          </div>
         ),
       },
     ],
@@ -227,70 +224,68 @@ export function ArtistsAdminPage() {
     getCoreRowModel: getCoreRowModel(),
   })
 
-  async function onCreate(e: FormEvent) {
-    e.preventDefault()
-    const name = newName.trim()
-    if (!name) return
-    const { error } = await supabase.from('artists').insert({ name })
-    if (error) setMessage(error.message)
-    else {
-      setNewName('')
-      await load()
-    }
-  }
-
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black tracking-tight uppercase">
-            Artists
+            Artist profiles
           </h2>
           <p className="mt-1 text-sm text-neutral-500">
-            CRUD, verify, link YouTube channels, sync or fix wrong Spotify
-            matches.
+            Supabase is the source of truth. Spotify is used for import and
+            sync.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setMessage(null)
-            void syncFeaturedArtistsFromSpotify(true)
-              .then(() => {
-                setMessage('Featured Spotify sync complete')
-                return load()
-              })
-              .catch((err: unknown) => {
-                setMessage(
-                  err instanceof Error ? err.message : 'Featured sync failed',
-                )
-              })
-          }}
-          className="bg-black px-4 py-2 text-xs font-bold text-white uppercase"
-        >
-          Sync featured Spotify
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null)
+              setAddOpen(true)
+            }}
+            className="bg-ct-orange px-4 py-2 text-xs font-bold text-black uppercase"
+          >
+            Add artist
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null)
+              void syncFeaturedArtistsFromSpotify(true)
+                .then(() => {
+                  setMessage('Featured Spotify sync complete')
+                  return load()
+                })
+                .catch((err: unknown) => {
+                  setMessage(
+                    err instanceof Error ? err.message : 'Featured sync failed',
+                  )
+                })
+            }}
+            className="bg-black px-4 py-2 text-xs font-bold text-white uppercase"
+          >
+            Sync featured Spotify
+          </button>
+        </div>
       </div>
-
-      <form onSubmit={onCreate} className="mt-6 flex flex-wrap gap-2">
-        <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
-          placeholder="New artist name"
-          className="border border-neutral-300 bg-white px-3 py-2 text-sm"
-        />
-        <button
-          type="submit"
-          className="bg-ct-orange px-4 py-2 text-xs font-bold text-black uppercase"
-        >
-          Add artist
-        </button>
-      </form>
 
       {message && <p className="mt-4 text-sm text-neutral-600">{message}</p>}
 
+      {addOpen && (
+        <SpotifyFixPanel
+          mode="add"
+          onClose={() => setAddOpen(false)}
+          onLinked={(name) => {
+            setMessage(name ? `Added ${name}` : 'Artist added')
+            setAddOpen(false)
+            void load()
+          }}
+        />
+      )}
+
       {fixArtist && (
         <SpotifyFixPanel
+          mode="fix"
           artistId={fixArtist.id}
           artistName={fixArtist.name}
           currentSpotifyUrl={fixArtist.spotify_url}
@@ -306,6 +301,8 @@ export function ArtistsAdminPage() {
       <div className="mt-6 overflow-x-auto border border-neutral-200 bg-white">
         {loading ? (
           <p className="p-6 text-sm text-neutral-500">Loading…</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-sm text-neutral-500">No artist profiles yet.</p>
         ) : (
           <table className="min-w-full text-left text-sm">
             <thead className="bg-black text-xs text-white uppercase">

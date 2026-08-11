@@ -17,6 +17,7 @@ import { AdminLayout } from './admin/AdminLayout'
 import { RequireStaff } from './admin/RequireStaff'
 import { VideoQueuePage } from './admin/VideoQueuePage'
 import { ArtistsAdminPage } from './admin/ArtistsAdminPage'
+import { ArtistEditPage } from './admin/ArtistEditPage'
 import { SubmissionsAdminPage } from './admin/SubmissionsAdminPage'
 import { StaffPage } from './admin/StaffPage'
 
@@ -53,6 +54,7 @@ export default function App() {
         >
           <Route index element={<VideoQueuePage />} />
           <Route path="artists" element={<ArtistsAdminPage />} />
+          <Route path="artists/:artistId" element={<ArtistEditPage />} />
           <Route path="submissions" element={<SubmissionsAdminPage />} />
           <Route path="staff" element={<StaffPage />} />
           <Route path="account" element={<AdminAccountPage />} />

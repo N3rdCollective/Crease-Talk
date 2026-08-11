@@ -153,15 +153,21 @@ function pickImage(artist: SpotifyArtist): string | null {
   return sorted[Math.min(1, sorted.length - 1)]?.url ?? sorted[0]?.url ?? null;
 }
 
-function mapSpotifyFields(artist: SpotifyArtist, keepName: boolean) {
+function mapSpotifyFields(
+  artist: SpotifyArtist,
+  keepName: boolean,
+  keepImage: boolean,
+) {
   const fields: Record<string, unknown> = {
     spotify_id: artist.id,
-    image_url: pickImage(artist),
     genres: artist.genres ?? [],
     followers: artist.followers?.total ?? 0,
     spotify_url: artist.external_urls?.spotify ?? null,
     updated_at: new Date().toISOString(),
   };
+  if (!keepImage) {
+    fields.image_url = pickImage(artist);
+  }
   if (!keepName) {
     fields.name = artist.name;
   }
@@ -205,7 +211,8 @@ Deno.serve(async (req: Request) => {
 
     const body = (await req.json().catch(() => ({}))) as EnrichBody;
     const force = Boolean(body.force);
-    const keepName = body.keepName !== false;
+    // Default: adopt Spotify spelling. Pass keepName:true to preserve CreaseTalk name.
+    const keepName = body.keepName === true;
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const token = await getSpotifyToken(spotifyClientId, spotifyClientSecret);
@@ -241,7 +248,7 @@ Deno.serve(async (req: Request) => {
     if (body.syncFeatured) {
       let query = supabase
         .from("artists")
-        .select("id, name, spotify_id")
+        .select("id, name, spotify_id, image_locked")
         .eq("is_featured", true)
         .order("display_order", { ascending: true });
 
@@ -257,7 +264,7 @@ Deno.serve(async (req: Request) => {
         try {
           const enriched = await enrichRow(supabase, token, row, {
             force,
-            keepName: true,
+            keepName,
           });
           results.push({
             id: row.id,
@@ -278,44 +285,72 @@ Deno.serve(async (req: Request) => {
       return json({ synced: results.length, results });
     }
 
-    // Single artist by id or name
-    if (!body.artistId && !body.name) {
+    // Single artist by id, name, or Spotify link/id (add-artist flow)
+    if (!body.artistId && !body.name && !linkedId) {
       return json(
         {
           error:
-            "Provide artistId, name, syncFeatured:true, or searchQuery in the request body",
+            "Provide artistId, name, spotifyId/spotifyUrl, syncFeatured:true, or searchQuery in the request body",
         },
         400,
       );
     }
 
-    let row: { id: string; name: string; spotify_id: string | null } | null =
-      null;
+    let row: {
+      id: string;
+      name: string;
+      spotify_id: string | null;
+      image_locked: boolean;
+    } | null = null;
 
     if (body.artistId) {
       const { data, error } = await supabase
         .from("artists")
-        .select("id, name, spotify_id")
+        .select("id, name, spotify_id, image_locked")
         .eq("id", body.artistId)
         .maybeSingle();
       if (error) return json({ error: error.message }, 500);
       row = data;
       if (!row) return json({ error: "Artist not found" }, 404);
-    } else if (body.name) {
-      const name = body.name.trim();
-      const { data: existing } = await supabase
-        .from("artists")
-        .select("id, name, spotify_id")
-        .ilike("name", name)
-        .maybeSingle();
+    } else {
+      // Prefer existing row with this Spotify ID (avoid duplicates on Add)
+      if (linkedId) {
+        const { data: bySpotify, error: bySpotifyError } = await supabase
+          .from("artists")
+          .select("id, name, spotify_id, image_locked")
+          .eq("spotify_id", linkedId)
+          .maybeSingle();
+        if (bySpotifyError) {
+          return json({ error: bySpotifyError.message }, 500);
+        }
+        row = bySpotify;
+      }
 
-      if (existing) {
-        row = existing;
-      } else {
+      if (!row && body.name) {
+        const name = body.name.trim();
+        const { data: existing } = await supabase
+          .from("artists")
+          .select("id, name, spotify_id, image_locked")
+          .ilike("name", name)
+          .maybeSingle();
+
+        if (existing) {
+          row = existing;
+        } else {
+          const { data: created, error: createError } = await supabase
+            .from("artists")
+            .insert({ name, is_featured: false })
+            .select("id, name, spotify_id, image_locked")
+            .single();
+          if (createError) return json({ error: createError.message }, 500);
+          row = created;
+        }
+      } else if (!row && linkedId) {
+        const spotifyArtist = await getSpotifyArtist(token, linkedId);
         const { data: created, error: createError } = await supabase
           .from("artists")
-          .insert({ name, is_featured: false })
-          .select("id, name, spotify_id")
+          .insert({ name: spotifyArtist.name, is_featured: false })
+          .select("id, name, spotify_id, image_locked")
           .single();
         if (createError) return json({ error: createError.message }, 500);
         row = created;
@@ -326,7 +361,7 @@ Deno.serve(async (req: Request) => {
 
     const artist = await enrichRow(supabase, token, row, {
       force,
-      keepName: linkedId ? keepName : true,
+      keepName,
       forcedSpotifyId: linkedId,
     });
     return json({ artist });
@@ -341,7 +376,12 @@ Deno.serve(async (req: Request) => {
 async function enrichRow(
   supabase: ReturnType<typeof createClient>,
   token: string,
-  row: { id: string; name: string; spotify_id: string | null },
+  row: {
+    id: string;
+    name: string;
+    spotify_id: string | null;
+    image_locked?: boolean | null;
+  },
   options: {
     force: boolean;
     keepName: boolean;
@@ -369,7 +409,11 @@ async function enrichRow(
   }
 
   const spotifyArtist = await getSpotifyArtist(token, spotifyId);
-  const fields = mapSpotifyFields(spotifyArtist, options.keepName);
+  const fields = mapSpotifyFields(
+    spotifyArtist,
+    options.keepName,
+    Boolean(row.image_locked),
+  );
   const { data, error } = await supabase
     .from("artists")
     .update(fields)

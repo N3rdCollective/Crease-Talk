@@ -59,6 +59,12 @@ function pickLargestImage(
   return sorted[0]?.url ?? null;
 }
 
+/**
+ * Read-only Spotify helper for public profiles.
+ * CreaseTalk `artists` table is the source of truth for profile fields.
+ * This function only resolves spotify_id from DB and returns live top tracks
+ * (plus an optional Spotify snapshot — never writes back to artists).
+ */
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -91,7 +97,7 @@ Deno.serve(async (req: Request) => {
       const { data, error } = await supabase
         .from("artists")
         .select(
-          "id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio",
+          "id, name, spotify_id, image_url, image_locked, genres, followers, spotify_url, is_verified, bio",
         )
         .eq("id", artistId)
         .maybeSingle();
@@ -133,20 +139,7 @@ Deno.serve(async (req: Request) => {
       topTracks = (tracksJson?.tracks ?? []) as SpotifyTrack[];
     }
 
-    // Refresh local cache lightly (optional; keep display name)
-    if (local?.id) {
-      await supabase
-        .from("artists")
-        .update({
-          spotify_id: spotifyArtist.id,
-          image_url: pickLargestImage(spotifyArtist.images),
-          genres: spotifyArtist.genres ?? [],
-          followers: spotifyArtist.followers?.total ?? 0,
-          spotify_url: spotifyArtist.external_urls?.spotify ?? null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", local.id as string);
-    }
+    // No DB writes — artists table is edited only via admin / spotify-enrich-artist
 
     return json({
       artist: local,
@@ -155,7 +148,6 @@ Deno.serve(async (req: Request) => {
         name: spotifyArtist.name,
         genres: spotifyArtist.genres ?? [],
         followers: spotifyArtist.followers?.total ?? 0,
-        // Full-resolution Spotify image URL — do not crop/alter in UI
         image_url: pickLargestImage(spotifyArtist.images),
         spotify_url: spotifyArtist.external_urls?.spotify ?? null,
       },
@@ -165,7 +157,6 @@ Deno.serve(async (req: Request) => {
         preview_url: t.preview_url ?? null,
         spotify_url: t.external_urls?.spotify ?? null,
         album_name: t.album?.name ?? null,
-        // Album art as provided by Spotify
         album_image_url: pickLargestImage(t.album?.images),
         artists: (t.artists ?? []).map((a) => a.name).join(", "),
       })),

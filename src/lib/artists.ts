@@ -19,7 +19,7 @@ export async function fetchFeaturedArtists(): Promise<ArtistRow[]> {
   const { data, error } = await supabase
     .from('artists')
     .select(
-      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_featured, display_order',
+      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio, is_featured, display_order',
     )
     .eq('is_featured', true)
     .order('display_order', { ascending: true })
@@ -32,7 +32,7 @@ export async function fetchAllArtists(): Promise<ArtistRow[]> {
   const { data, error } = await supabase
     .from('artists')
     .select(
-      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_featured, display_order',
+      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio, is_featured, display_order',
     )
     .order('followers', { ascending: false })
 
@@ -78,7 +78,7 @@ export async function linkArtistToSpotify(options: {
         artistId: options.artistId,
         spotifyId: options.spotifyId,
         spotifyUrl: options.spotifyUrl,
-        keepName: options.keepName ?? true,
+        keepName: options.keepName ?? false,
       },
     },
   )

@@ -3,7 +3,7 @@ import { signOut } from '../lib/auth'
 
 const links = [
   { to: '/admin', label: 'Video Queue', end: true },
-  { to: '/admin/artists', label: 'Artists' },
+  { to: '/admin/artists', label: 'Artist Profiles' },
   { to: '/admin/submissions', label: 'Submissions' },
   { to: '/admin/staff', label: 'Staff' },
   { to: '/admin/account', label: 'Account' },
