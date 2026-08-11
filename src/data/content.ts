@@ -22,9 +22,9 @@ export type DiscoverItem = {
 export const navLinks = [
   { label: 'HOME', href: '/#home' },
   { label: 'DISCOVER', href: '/#discover' },
-  { label: 'ARTISTS', href: '/#artists' },
+  { label: 'ARTISTS', href: '/new-artists' },
   { label: 'VIDEOS', href: '/videos' },
-  { label: 'MUSIC', href: '/#radio' },
+  { label: 'MUSIC', href: '/new-music' },
   { label: 'INTERVIEWS', href: '/#interviews' },
   { label: 'SUBMIT MUSIC', href: '/#submit' },
 ] as const
@@ -82,27 +82,27 @@ export const discoverItems: DiscoverItem[] = [
     title: 'NEW ARTISTS',
     description: 'Fresh talent breaking through right now.',
     icon: 'star',
-    href: '#artists',
+    href: '/new-artists',
   },
   {
     id: 'd2',
     title: 'NEW MUSIC',
     description: 'The latest drops from the underground.',
     icon: 'music',
-    href: '#radio',
+    href: '/new-music',
   },
   {
     id: 'd3',
     title: 'NEW VIDEOS',
     description: 'Visuals, performances, and exclusive cuts.',
     icon: 'video',
-    href: '#latest',
+    href: '/videos',
   },
   {
     id: 'd4',
     title: 'ONES TO WATCH',
     description: 'Artists on the verge of their next wave.',
     icon: 'eye',
-    href: '#artists',
+    href: '/ones-to-watch',
   },
 ]

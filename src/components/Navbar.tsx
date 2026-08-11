@@ -7,9 +7,7 @@ import { navLinks } from '../data/content'
 export function Navbar() {
   const location = useLocation()
   const [open, setOpen] = useState(false)
-  const [active, setActive] = useState(
-    location.pathname === '/videos' ? 'VIDEOS' : 'HOME',
-  )
+  const [active, setActive] = useState('HOME')
 
   useEffect(() => {
     document.body.style.overflow = open ? 'hidden' : ''
@@ -19,12 +17,16 @@ export function Navbar() {
   }, [open])
 
   useEffect(() => {
-    if (location.pathname === '/videos') {
-      setActive('VIDEOS')
+    const byPath = navLinks.find((link) => link.href === location.pathname)
+    if (byPath) {
+      setActive(byPath.label)
       return
     }
     if (location.hash) {
-      const match = navLinks.find((link) => link.href === location.hash)
+      const hashHref = `/${location.hash}`
+      const match = navLinks.find(
+        (link) => link.href === location.hash || link.href === hashHref,
+      )
       if (match) setActive(match.label)
     } else if (location.pathname === '/') {
       setActive('HOME')

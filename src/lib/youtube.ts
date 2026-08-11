@@ -5,6 +5,7 @@ export type YouTubeVideo = {
   thumbnail: string
   publishedAt: string
   durationSeconds: number
+  viewCount: number
   watchUrl: string
 }
 
@@ -97,6 +98,7 @@ type VideosResponse = {
       thumbnails?: Record<string, { url?: string }>
     }
     contentDetails?: { duration?: string }
+    statistics?: { viewCount?: string }
   }>
 }
 
@@ -137,6 +139,7 @@ function toYouTubeVideo(
       fallback?.snippet?.publishedAt ||
       '',
     durationSeconds: parseIsoDuration(video.contentDetails?.duration || ''),
+    viewCount: Number(video.statistics?.viewCount || 0),
     watchUrl: `https://www.youtube.com/watch?v=${video.id}`,
   }
 }
@@ -147,6 +150,7 @@ export async function fetchChannelVideos(
     maxResults?: number
     /** Skip the newest N videos (e.g. 1 when hero already shows the latest) */
     skip?: number
+    sortBy?: 'date' | 'views'
   } = {},
 ): Promise<YouTubeVideo[]> {
   const handle =
@@ -171,13 +175,13 @@ export async function fetchChannelVideos(
   if (ids.length === 0) return []
 
   const videos = await youtubeGet<VideosResponse>('videos', {
-    part: 'snippet,contentDetails',
+    part: 'snippet,contentDetails,statistics',
     id: ids.join(','),
   })
 
   const byId = new Map((videos.items || []).map((v) => [v.id, v]))
 
-  return items
+  const mapped = items
     .map((item) => {
       const id = item.contentDetails?.videoId
       if (!id) return null
@@ -186,6 +190,12 @@ export async function fetchChannelVideos(
       return toYouTubeVideo(video, item)
     })
     .filter((v): v is YouTubeVideo => v !== null)
+
+  if (options.sortBy === 'views') {
+    return [...mapped].sort((a, b) => b.viewCount - a.viewCount)
+  }
+
+  return mapped
 }
 
 export async function fetchLatestChannelVideo(
@@ -194,6 +204,43 @@ export async function fetchLatestChannelVideo(
   const [latest] = await fetchChannelVideos({ handle, maxResults: 1, skip: 0 })
   if (!latest) throw new Error('No videos found on channel')
   return latest
+}
+
+export type ChannelArtist = {
+  name: string
+  thumbnail: string
+  videoCount: number
+  latestVideoId: string
+}
+
+/** Unique artists derived from recent channel uploads */
+export async function fetchChannelArtists(
+  options: { handle?: string; maxResults?: number } = {},
+): Promise<ChannelArtist[]> {
+  const videos = await fetchChannelVideos({
+    handle: options.handle,
+    maxResults: options.maxResults ?? 50,
+    skip: 0,
+  })
+
+  const byArtist = new Map<string, ChannelArtist>()
+
+  for (const video of videos) {
+    if (!video.artist || video.artist === 'CREASE TALK') continue
+    const existing = byArtist.get(video.artist)
+    if (!existing) {
+      byArtist.set(video.artist, {
+        name: video.artist,
+        thumbnail: video.thumbnail,
+        videoCount: 1,
+        latestVideoId: video.id,
+      })
+    } else {
+      existing.videoCount += 1
+    }
+  }
+
+  return [...byArtist.values()]
 }
 
 export function youtubeEmbedUrl(videoId: string, autoplay = false) {
@@ -208,4 +255,10 @@ export function youtubeEmbedUrl(videoId: string, autoplay = false) {
     params.set('origin', window.location.origin)
   }
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
+}
+
+export function formatViewCount(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return String(count)
 }

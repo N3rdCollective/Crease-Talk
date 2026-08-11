@@ -40,9 +40,10 @@ function TikTokIcon({ className }: IconProps) {
 
 const explore = [
   { label: 'Discover', href: '/#discover' },
-  { label: 'Artists', href: '/#artists' },
+  { label: 'Artists', href: '/new-artists' },
   { label: 'Videos', href: '/videos' },
-  { label: 'Music', href: '/#radio' },
+  { label: 'Music', href: '/new-music' },
+  { label: 'Ones to Watch', href: '/ones-to-watch' },
   { label: 'Interviews', href: '/#interviews' },
   { label: 'Submit Music', href: '/#submit' },
 ]

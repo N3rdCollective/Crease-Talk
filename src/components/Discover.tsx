@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { ArrowDown, Eye, Music2, Star, TvMinimalPlay } from 'lucide-react'
 import { SectionHeader } from './SectionHeader'
 import { discoverItems, type DiscoverItem } from '../data/content'
@@ -20,12 +21,12 @@ export function Discover() {
   return (
     <section id="discover" className="bg-white pb-14 md:pb-20">
       <div className="mx-auto max-w-7xl px-4 md:px-8">
-        <SectionHeader title="DISCOVER" href="#discover" />
+        <SectionHeader title="DISCOVER" href="/#discover" />
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 lg:gap-5">
           {discoverItems.map((item) => (
-            <a
+            <Link
               key={item.id}
-              href={item.href}
+              to={item.href}
               className="group flex min-h-[240px] flex-col items-center border border-ct-border px-6 py-8 text-center transition-colors hover:border-black"
             >
               <DiscoverIcon icon={item.icon} />
@@ -36,7 +37,7 @@ export function Discover() {
                 {item.description}
               </p>
               <ArrowDown className="mt-auto size-5 stroke-[1.5] pt-6 transition-transform group-hover:translate-y-1" />
-            </a>
+            </Link>
           ))}
         </div>
       </div>
