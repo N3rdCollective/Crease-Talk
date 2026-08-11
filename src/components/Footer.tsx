@@ -153,13 +153,19 @@ export function Footer() {
 
         <div className="mt-12 flex flex-col gap-4 border-t border-white/20 pt-6 text-xs text-white/55 sm:flex-row sm:items-center sm:justify-between">
           <p>© 2024 CreaseTalk LLC, All Rights Reserved.</p>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap gap-6">
             <a href="#privacy" className="transition-colors hover:text-white">
               Privacy Policy
             </a>
             <a href="#terms" className="transition-colors hover:text-white">
               Terms of Use
             </a>
+            <Link
+              to="/admin/login"
+              className="transition-colors hover:text-white"
+            >
+              Staff Login
+            </Link>
           </div>
         </div>
       </div>

@@ -8,6 +8,9 @@ export type ArtistRow = {
   genres: string[]
   followers: number
   spotify_url: string | null
+  youtube_channel_id?: string | null
+  is_verified?: boolean
+  bio?: string | null
   is_featured: boolean
   display_order: number
 }
@@ -47,5 +50,39 @@ export async function syncFeaturedArtistsFromSpotify(force = false) {
   )
 
   if (error) throw error
+  return data
+}
+
+/** Search Spotify artists (no DB write) for admin correction UI. */
+export async function searchSpotifyArtists(query: string, limit = 8) {
+  const { data, error } = await supabase.functions.invoke(
+    'spotify-enrich-artist',
+    { body: { searchQuery: query, searchLimit: limit } },
+  )
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+/** Force-link a CreaseTalk artist to a specific Spotify artist (ID or URL). */
+export async function linkArtistToSpotify(options: {
+  artistId: string
+  spotifyId?: string
+  spotifyUrl?: string
+  keepName?: boolean
+}) {
+  const { data, error } = await supabase.functions.invoke(
+    'spotify-enrich-artist',
+    {
+      body: {
+        artistId: options.artistId,
+        spotifyId: options.spotifyId,
+        spotifyUrl: options.spotifyUrl,
+        keepName: options.keepName ?? true,
+      },
+    },
+  )
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
   return data
 }

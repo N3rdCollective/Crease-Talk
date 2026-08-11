@@ -80,7 +80,7 @@ export function Hero() {
               DISCOVER ARTISTS →
             </a>
             <a
-              href="#submit"
+              href="/submit"
               className="inline-flex items-center justify-center rounded-md border border-white px-6 py-3 text-xs font-extrabold tracking-wider text-white uppercase transition-colors hover:bg-white hover:text-black"
             >
               SUBMIT MUSIC →

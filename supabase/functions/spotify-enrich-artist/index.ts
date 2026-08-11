@@ -16,6 +16,15 @@ type EnrichBody = {
   syncFeatured?: boolean;
   /** Re-fetch Spotify even when spotify_id already set */
   force?: boolean;
+  /** Force-link a specific Spotify artist ID */
+  spotifyId?: string;
+  /** Spotify artist URL / URI — parsed into spotifyId */
+  spotifyUrl?: string;
+  /** Search Spotify artists only (no DB write). Returns candidates. */
+  searchQuery?: string;
+  searchLimit?: number;
+  /** When linking, keep CreaseTalk display name (default true) */
+  keepName?: boolean;
 };
 
 type SpotifyTokenResponse = {
@@ -63,14 +72,40 @@ async function getSpotifyToken(
   return data.access_token;
 }
 
-async function searchSpotifyArtist(
+/** Parse open.spotify.com/artist/ID, spotify:artist:ID, or raw ID */
+function parseSpotifyArtistId(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const uri = raw.match(/^spotify:artist:([a-zA-Z0-9]+)$/);
+  if (uri) return uri[1];
+
+  try {
+    const url = new URL(raw);
+    if (url.hostname.includes("spotify.com")) {
+      const parts = url.pathname.split("/").filter(Boolean);
+      const artistIdx = parts.indexOf("artist");
+      if (artistIdx >= 0 && parts[artistIdx + 1]) {
+        return parts[artistIdx + 1].split("?")[0];
+      }
+    }
+  } catch {
+    // not a URL
+  }
+
+  if (/^[a-zA-Z0-9]{22}$/.test(raw)) return raw;
+  return null;
+}
+
+async function searchSpotifyArtists(
   token: string,
-  name: string,
-): Promise<SpotifyArtist | null> {
+  query: string,
+  limit = 8,
+): Promise<SpotifyArtist[]> {
   const url = new URL("https://api.spotify.com/v1/search");
-  url.searchParams.set("q", name);
+  url.searchParams.set("q", query);
   url.searchParams.set("type", "artist");
-  url.searchParams.set("limit", "1");
+  url.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 20)));
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
@@ -82,7 +117,15 @@ async function searchSpotifyArtist(
   }
 
   const data = await res.json();
-  return (data?.artists?.items?.[0] as SpotifyArtist | undefined) ?? null;
+  return (data?.artists?.items ?? []) as SpotifyArtist[];
+}
+
+async function searchSpotifyArtist(
+  token: string,
+  name: string,
+): Promise<SpotifyArtist | null> {
+  const items = await searchSpotifyArtists(token, name, 1);
+  return items[0] ?? null;
 }
 
 async function getSpotifyArtist(
@@ -104,22 +147,35 @@ async function getSpotifyArtist(
 function pickImage(artist: SpotifyArtist): string | null {
   const images = artist.images ?? [];
   if (images.length === 0) return null;
-  // Prefer mid-size for avatars; fall back to largest
   const sorted = [...images].sort(
     (a, b) => (b.width ?? 0) - (a.width ?? 0),
   );
   return sorted[Math.min(1, sorted.length - 1)]?.url ?? sorted[0]?.url ?? null;
 }
 
-function mapSpotifyFields(artist: SpotifyArtist) {
-  return {
+function mapSpotifyFields(artist: SpotifyArtist, keepName: boolean) {
+  const fields: Record<string, unknown> = {
     spotify_id: artist.id,
-    name: artist.name,
     image_url: pickImage(artist),
     genres: artist.genres ?? [],
     followers: artist.followers?.total ?? 0,
     spotify_url: artist.external_urls?.spotify ?? null,
     updated_at: new Date().toISOString(),
+  };
+  if (!keepName) {
+    fields.name = artist.name;
+  }
+  return fields;
+}
+
+function toCandidate(artist: SpotifyArtist) {
+  return {
+    id: artist.id,
+    name: artist.name,
+    followers: artist.followers?.total ?? 0,
+    genres: artist.genres ?? [],
+    image_url: pickImage(artist),
+    spotify_url: artist.external_urls?.spotify ?? null,
   };
 }
 
@@ -149,9 +205,37 @@ Deno.serve(async (req: Request) => {
 
     const body = (await req.json().catch(() => ({}))) as EnrichBody;
     const force = Boolean(body.force);
+    const keepName = body.keepName !== false;
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const token = await getSpotifyToken(spotifyClientId, spotifyClientSecret);
+
+    // Search-only mode for admin correction UI
+    if (body.searchQuery?.trim()) {
+      const items = await searchSpotifyArtists(
+        token,
+        body.searchQuery.trim(),
+        body.searchLimit ?? 8,
+      );
+      return json({
+        query: body.searchQuery.trim(),
+        results: items.map(toCandidate),
+      });
+    }
+
+    const linkedId =
+      body.spotifyId?.trim() ||
+      (body.spotifyUrl ? parseSpotifyArtistId(body.spotifyUrl) : null);
+
+    if (body.spotifyUrl && !linkedId) {
+      return json(
+        {
+          error:
+            "Could not parse Spotify artist from URL. Use open.spotify.com/artist/... or spotify:artist:...",
+        },
+        400,
+      );
+    }
 
     // Sync all featured artists
     if (body.syncFeatured) {
@@ -171,8 +255,16 @@ Deno.serve(async (req: Request) => {
       const results = [];
       for (const row of rows ?? []) {
         try {
-          const enriched = await enrichRow(supabase, token, row, force);
-          results.push({ id: row.id, name: row.name, ok: true, artist: enriched });
+          const enriched = await enrichRow(supabase, token, row, {
+            force,
+            keepName: true,
+          });
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: true,
+            artist: enriched,
+          });
         } catch (err) {
           results.push({
             id: row.id,
@@ -191,7 +283,7 @@ Deno.serve(async (req: Request) => {
       return json(
         {
           error:
-            "Provide artistId, name, or syncFeatured:true in the request body",
+            "Provide artistId, name, syncFeatured:true, or searchQuery in the request body",
         },
         400,
       );
@@ -232,7 +324,11 @@ Deno.serve(async (req: Request) => {
 
     if (!row) return json({ error: "Unable to resolve artist row" }, 500);
 
-    const artist = await enrichRow(supabase, token, row, force);
+    const artist = await enrichRow(supabase, token, row, {
+      force,
+      keepName: linkedId ? keepName : true,
+      forcedSpotifyId: linkedId,
+    });
     return json({ artist });
   } catch (err) {
     return json(
@@ -246,22 +342,34 @@ async function enrichRow(
   supabase: ReturnType<typeof createClient>,
   token: string,
   row: { id: string; name: string; spotify_id: string | null },
-  _force: boolean,
+  options: {
+    force: boolean;
+    keepName: boolean;
+    forcedSpotifyId?: string | null;
+  },
 ) {
-  let spotifyId = row.spotify_id;
+  let spotifyId = options.forcedSpotifyId || row.spotify_id;
 
-  // Step A: search once when we don't have a permanent Spotify ID yet
-  if (!spotifyId) {
+  // Re-search when forcing without an explicit ID (wrong auto-match)
+  if (!spotifyId || (options.force && !options.forcedSpotifyId && !row.spotify_id)) {
     const match = await searchSpotifyArtist(token, row.name);
     if (!match) {
       throw new Error(`No Spotify match for "${row.name}"`);
     }
     spotifyId = match.id;
+  } else if (options.force && !options.forcedSpotifyId && row.spotify_id) {
+    // force refresh of existing ID
+    spotifyId = row.spotify_id;
   }
 
-  // Step B: always fetch full artist payload (followers, genres, images)
+  if (!spotifyId) {
+    const match = await searchSpotifyArtist(token, row.name);
+    if (!match) throw new Error(`No Spotify match for "${row.name}"`);
+    spotifyId = match.id;
+  }
+
   const spotifyArtist = await getSpotifyArtist(token, spotifyId);
-  const fields = mapSpotifyFields(spotifyArtist);
+  const fields = mapSpotifyFields(spotifyArtist, options.keepName);
   const { data, error } = await supabase
     .from("artists")
     .update(fields)

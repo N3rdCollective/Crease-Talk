@@ -26,7 +26,7 @@ export const navLinks = [
   { label: 'VIDEOS', href: '/videos' },
   { label: 'MUSIC', href: '/new-music' },
   { label: 'INTERVIEWS', href: '/#interviews' },
-  { label: 'SUBMIT MUSIC', href: '/#submit' },
+  { label: 'SUBMIT MUSIC', href: '/submit' },
 ] as const
 
 export const latestVideos: VideoItem[] = [

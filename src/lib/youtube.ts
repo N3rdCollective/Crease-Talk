@@ -144,11 +144,40 @@ function toYouTubeVideo(
   }
 }
 
+/**
+ * Prefer approved Supabase media_assets; fall back to live YouTube API
+ * when the catalog is empty (cutover safety).
+ */
 export async function fetchChannelVideos(
   options: {
     handle?: string
     maxResults?: number
     /** Skip the newest N videos (e.g. 1 when hero already shows the latest) */
+    skip?: number
+    sortBy?: 'date' | 'views'
+    category?: 'performance' | 'interview' | 'other'
+  } = {},
+): Promise<YouTubeVideo[]> {
+  try {
+    const { fetchApprovedVideosAsYouTube } = await import('./media')
+    const fromDb = await fetchApprovedVideosAsYouTube({
+      limit: options.maxResults,
+      skip: options.skip,
+      sortBy: options.sortBy,
+      category: options.category,
+    })
+    if (fromDb.length > 0) return fromDb
+  } catch (err) {
+    console.warn('media_assets fetch failed, falling back to YouTube API', err)
+  }
+
+  return fetchChannelVideosFromApi(options)
+}
+
+async function fetchChannelVideosFromApi(
+  options: {
+    handle?: string
+    maxResults?: number
     skip?: number
     sortBy?: 'date' | 'views'
   } = {},
