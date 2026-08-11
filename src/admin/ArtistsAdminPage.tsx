@@ -7,7 +7,11 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table'
 import { supabase } from '../lib/supabase/client'
-import { syncFeaturedArtistsFromSpotify } from '../lib/artists'
+import {
+  syncArtistBiosFromLastFm,
+  syncArtistCatalogsFromSpotify,
+  syncFeaturedArtistsFromSpotify,
+} from '../lib/artists'
 import { SpotifyFixPanel } from './SpotifyFixPanel'
 
 type ArtistAdmin = {
@@ -265,6 +269,50 @@ export function ArtistsAdminPage() {
             className="bg-black px-4 py-2 text-xs font-bold text-white uppercase"
           >
             Sync featured Spotify
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null)
+              void syncArtistBiosFromLastFm(false)
+                .then((data) => {
+                  setMessage(
+                    `Last.fm bios: filled ${data.filled ?? 0} of ${data.synced ?? 0}`,
+                  )
+                  return load()
+                })
+                .catch((err: unknown) => {
+                  setMessage(
+                    err instanceof Error ? err.message : 'Last.fm bio sync failed',
+                  )
+                })
+            }}
+            className="border border-neutral-300 bg-white px-4 py-2 text-xs font-bold uppercase"
+          >
+            Import Last.fm bios
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null)
+              void syncArtistCatalogsFromSpotify()
+                .then((data) => {
+                  setMessage(
+                    `Spotify catalog: ${data.releases ?? 0} releases across ${data.synced ?? 0} artists`,
+                  )
+                  return load()
+                })
+                .catch((err: unknown) => {
+                  setMessage(
+                    err instanceof Error
+                      ? err.message
+                      : 'Spotify catalog sync failed',
+                  )
+                })
+            }}
+            className="border border-neutral-300 bg-white px-4 py-2 text-xs font-bold uppercase"
+          >
+            Sync Spotify catalogs
           </button>
         </div>
       </div>

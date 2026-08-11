@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X } from 'lucide-react'
+import { Menu, ShoppingBag, X } from 'lucide-react'
 import { Logo } from './Logo'
 import { navLinks } from '../data/content'
+import { useCart } from '../lib/cart'
 
 export function Navbar() {
   const location = useLocation()
+  const { count } = useCart()
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState('HOME')
 
@@ -66,14 +68,40 @@ export function Navbar() {
               </Link>
             )
           })}
+          <Link
+            to="/shop/cart"
+            aria-label={count > 0 ? `Cart, ${count} items` : 'Cart'}
+            className="relative p-1 text-white transition-colors hover:text-ct-orange"
+          >
+            <ShoppingBag className="size-5" strokeWidth={1.75} />
+            {count > 0 && (
+              <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center bg-ct-orange text-[9px] font-bold text-black">
+                {count > 9 ? '9+' : count}
+              </span>
+            )}
+          </Link>
         </nav>
+
+        <Link
+          to="/shop/cart"
+          aria-label={count > 0 ? `Cart, ${count} items` : 'Cart'}
+          className="relative z-50 ml-auto p-2 text-white lg:hidden"
+          onClick={() => setOpen(false)}
+        >
+          <ShoppingBag className="size-5" strokeWidth={1.75} />
+          {count > 0 && (
+            <span className="absolute top-0.5 right-0.5 flex size-4 items-center justify-center bg-ct-orange text-[9px] font-bold text-black">
+              {count > 9 ? '9+' : count}
+            </span>
+          )}
+        </Link>
 
         <button
           type="button"
           aria-label={open ? 'Close menu' : 'Open menu'}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
-          className="relative z-50 ml-auto p-2 text-white lg:ml-0"
+          className="relative z-50 p-2 text-white lg:hidden"
         >
           {open ? <X className="size-6" /> : <Menu className="size-6" strokeWidth={2} />}
         </button>

@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { Navbar } from './components/Navbar'
 import { Footer } from './components/Footer'
+import { CartProvider } from './lib/cart'
 import { HomePage } from './pages/HomePage'
 import { VideosPage } from './pages/VideosPage'
 import { NewArtistsPage } from './pages/NewArtistsPage'
@@ -9,6 +10,9 @@ import { NewMusicPage } from './pages/NewMusicPage'
 import { OnesToWatchPage } from './pages/OnesToWatchPage'
 import { SubmitPage } from './pages/SubmitPage'
 import { ArtistProfilePage } from './pages/ArtistProfilePage'
+import { ShopPage } from './pages/ShopPage'
+import { ShopProductPage } from './pages/ShopProductPage'
+import { ShopCartPage } from './pages/ShopCartPage'
 import { AdminLoginPage } from './admin/AdminLoginPage'
 import { AdminForgotPasswordPage } from './admin/AdminForgotPasswordPage'
 import { AdminResetPasswordPage } from './admin/AdminResetPasswordPage'
@@ -34,6 +38,7 @@ function PublicShell({ children }: { children: ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <CartProvider>
       <Routes>
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route
@@ -109,6 +114,30 @@ export default function App() {
           }
         />
         <Route
+          path="/shop"
+          element={
+            <PublicShell>
+              <ShopPage />
+            </PublicShell>
+          }
+        />
+        <Route
+          path="/shop/cart"
+          element={
+            <PublicShell>
+              <ShopCartPage />
+            </PublicShell>
+          }
+        />
+        <Route
+          path="/shop/:productId"
+          element={
+            <PublicShell>
+              <ShopProductPage />
+            </PublicShell>
+          }
+        />
+        <Route
           path="/artists/:artistId"
           element={
             <PublicShell>
@@ -118,6 +147,7 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </CartProvider>
     </BrowserRouter>
   )
 }

@@ -12,15 +12,20 @@ export type MediaAsset = {
   duration_seconds: number
   view_count: number
   category: 'performance' | 'interview' | 'other'
+  media_kind: 'youtube' | 'audio'
   approval_status: 'pending' | 'approved' | 'rejected'
   is_featured: boolean
   submission_id: string | null
+  audio_file_path: string | null
+  audio_file_url: string | null
+  cover_file_path: string | null
+  cover_file_url: string | null
   created_at: string
   updated_at: string
 }
 
 const MEDIA_SELECT =
-  'id, artist_id, youtube_video_id, title, parsed_artist_name, thumbnail_url, published_at, duration_seconds, view_count, category, approval_status, is_featured, submission_id, created_at, updated_at'
+  'id, artist_id, youtube_video_id, title, parsed_artist_name, thumbnail_url, published_at, duration_seconds, view_count, category, media_kind, approval_status, is_featured, submission_id, audio_file_path, audio_file_url, cover_file_path, cover_file_url, created_at, updated_at'
 
 export function mediaToYouTubeVideo(row: MediaAsset): YouTubeVideo | null {
   if (!row.youtube_video_id) return null
@@ -41,6 +46,7 @@ export async function fetchApprovedMedia(options: {
   skip?: number
   sortBy?: 'date' | 'views'
   category?: MediaAsset['category']
+  kind?: MediaAsset['media_kind']
 } = {}): Promise<MediaAsset[]> {
   const limit = options.limit ?? 24
   const skip = options.skip ?? 0
@@ -49,7 +55,13 @@ export async function fetchApprovedMedia(options: {
     .from('media_assets')
     .select(MEDIA_SELECT)
     .eq('approval_status', 'approved')
-    .not('youtube_video_id', 'is', null)
+
+  if (options.kind) {
+    query = query.eq('media_kind', options.kind)
+  } else {
+    // Default public video feeds: YouTube only
+    query = query.eq('media_kind', 'youtube').not('youtube_video_id', 'is', null)
+  }
 
   if (options.category) {
     query = query.eq('category', options.category)
@@ -68,13 +80,27 @@ export async function fetchApprovedMedia(options: {
   return (data ?? []) as MediaAsset[]
 }
 
+export async function fetchApprovedAudioForArtist(
+  artistId: string,
+): Promise<MediaAsset[]> {
+  const { data, error } = await supabase
+    .from('media_assets')
+    .select(MEDIA_SELECT)
+    .eq('approval_status', 'approved')
+    .eq('media_kind', 'audio')
+    .eq('artist_id', artistId)
+    .order('published_at', { ascending: false, nullsFirst: false })
+  if (error) throw error
+  return (data ?? []) as MediaAsset[]
+}
+
 export async function fetchApprovedVideosAsYouTube(options: {
   limit?: number
   skip?: number
   sortBy?: 'date' | 'views'
   category?: MediaAsset['category']
 } = {}): Promise<YouTubeVideo[]> {
-  const rows = await fetchApprovedMedia(options)
+  const rows = await fetchApprovedMedia({ ...options, kind: 'youtube' })
   return rows
     .map(mediaToYouTubeVideo)
     .filter((v): v is YouTubeVideo => v !== null)
@@ -84,6 +110,7 @@ export async function fetchAllMediaForAdmin(status?: MediaAsset['approval_status
   let query = supabase
     .from('media_assets')
     .select(MEDIA_SELECT)
+    .eq('media_kind', 'youtube')
     .order('published_at', { ascending: false, nullsFirst: false })
 
   if (status) query = query.eq('approval_status', status)

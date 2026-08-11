@@ -3,6 +3,11 @@ import { Link, useParams } from 'react-router-dom'
 import { ExternalLink } from 'lucide-react'
 import { supabase } from '../lib/supabase/client'
 import {
+  fetchArtistReleases,
+  type ArtistRelease,
+} from '../lib/artists'
+import {
+  fetchApprovedAudioForArtist,
   fetchApprovedMedia,
   mediaToYouTubeVideo,
   type MediaAsset,
@@ -29,6 +34,7 @@ type ArtistRow = {
   genres: string[]
   followers: number
   spotify_url: string | null
+  instagram_url: string | null
   is_verified: boolean
   bio: string | null
 }
@@ -47,6 +53,9 @@ export function ArtistProfilePage() {
   const { artistId } = useParams<{ artistId: string }>()
   const [artist, setArtist] = useState<ArtistRow | null>(null)
   const [topTracks, setTopTracks] = useState<SpotifyTrack[]>([])
+  const [audioTracks, setAudioTracks] = useState<MediaAsset[]>([])
+  const [releases, setReleases] = useState<ArtistRelease[]>([])
+  const [activeRelease, setActiveRelease] = useState<ArtistRelease | null>(null)
   const [media, setMedia] = useState<MediaAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -58,22 +67,27 @@ export function ArtistProfilePage() {
     window.scrollTo(0, 0)
     setLoading(true)
     setError(null)
+    setActiveRelease(null)
 
     async function load() {
+      if (!artistId) return
       try {
-        const [artistRes, tracksRes, allMedia] = await Promise.all([
-          supabase
-            .from('artists')
-            .select(
-              'id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio',
-            )
-            .eq('id', artistId)
-            .maybeSingle(),
-          supabase.functions.invoke('spotify-artist-profile', {
-            body: { artistId },
-          }),
-          fetchApprovedMedia({ limit: 50 }),
-        ])
+        const [artistRes, tracksRes, audioRows, releaseRows, videoRows] =
+          await Promise.all([
+            supabase
+              .from('artists')
+              .select(
+                'id, name, spotify_id, image_url, genres, followers, spotify_url, instagram_url, is_verified, bio',
+              )
+              .eq('id', artistId)
+              .maybeSingle(),
+            supabase.functions.invoke('spotify-artist-profile', {
+              body: { artistId },
+            }),
+            fetchApprovedAudioForArtist(artistId),
+            fetchArtistReleases(artistId),
+            fetchApprovedMedia({ limit: 50, kind: 'youtube' }),
+          ])
 
         if (artistRes.error) throw artistRes.error
         if (!artistRes.data) throw new Error('Artist not found')
@@ -92,7 +106,9 @@ export function ArtistProfilePage() {
           setTopTracks((tracksRes.data?.topTracks ?? []) as SpotifyTrack[])
         }
 
-        setMedia(allMedia.filter((m) => m.artist_id === artistId))
+        setAudioTracks(audioRows)
+        setReleases(releaseRows)
+        setMedia(videoRows.filter((m) => m.artist_id === artistId))
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to load profile')
@@ -113,6 +129,7 @@ export function ArtistProfilePage() {
   const followers = artist?.followers ?? 0
   const genres = artist?.genres ?? []
   const spotifyUrl = artist?.spotify_url ?? null
+  const instagramUrl = artist?.instagram_url ?? null
   const bio = artist?.bio ?? null
   const usingSpotifyHostedImage = Boolean(
     imageUrl &&
@@ -137,17 +154,30 @@ export function ArtistProfilePage() {
                 />
               ) : null}
             </div>
-            {spotifyUrl && (
-              <a
-                href={spotifyUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold tracking-wide text-ct-orange uppercase"
-              >
-                Listen on Spotify
-                <ExternalLink className="size-3" />
-              </a>
-            )}
+            <div className="mt-3 flex flex-col gap-2">
+              {spotifyUrl && (
+                <a
+                  href={spotifyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wide text-ct-orange uppercase"
+                >
+                  Listen on Spotify
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+              {instagramUrl && (
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] font-bold tracking-wide text-ct-orange uppercase"
+                >
+                  Instagram
+                  <ExternalLink className="size-3" />
+                </a>
+              )}
+            </div>
           </div>
 
           <div className="flex flex-col justify-center">
@@ -197,19 +227,150 @@ export function ArtistProfilePage() {
 
         {!loading && !error && artist && (
           <>
-            <section>
-              <h2 className="text-xl font-black tracking-tight uppercase">
-                Top tracks
-              </h2>
-              <p className="mt-1 text-xs text-black/50">
-                Popular songs from Spotify. Artwork and links provided by
-                Spotify.
-              </p>
-              {topTracks.length === 0 ? (
-                <p className="mt-4 text-sm text-black/60">
-                  No top tracks available yet.
+            {audioTracks.length > 0 && (
+              <section>
+                <h2 className="text-xl font-black tracking-tight uppercase">
+                  On CreaseTalk
+                </h2>
+                <p className="mt-1 text-xs text-black/50">
+                  Tracks approved through the CreaseTalk submission pipeline.
                 </p>
-              ) : (
+                <ul className="mt-5 divide-y divide-ct-border border border-ct-border">
+                  {audioTracks.map((track) => {
+                    const src = track.audio_file_url
+                    const cover =
+                      track.cover_file_url || track.thumbnail_url || null
+                    return (
+                      <li
+                        key={track.id}
+                        className="flex flex-col gap-3 px-3 py-3 sm:flex-row sm:items-center"
+                      >
+                        {cover ? (
+                          <img
+                            src={cover}
+                            alt=""
+                            className="h-14 w-14 object-cover bg-[#f3f3f3]"
+                          />
+                        ) : (
+                          <div className="h-14 w-14 bg-[#f3f3f3]" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-bold">
+                            {track.title}
+                          </p>
+                          <p className="truncate text-xs text-black/50">
+                            {track.parsed_artist_name || name}
+                          </p>
+                        </div>
+                        {src ? (
+                          <audio
+                            controls
+                            preload="none"
+                            className="h-10 w-full max-w-md"
+                          >
+                            <source src={src} />
+                          </audio>
+                        ) : (
+                          <span className="text-xs text-black/40">
+                            Audio unavailable
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            )}
+
+            {releases.length > 0 && (
+              <section className="mt-12">
+                <h2 className="text-xl font-black tracking-tight uppercase">
+                  Discography
+                </h2>
+                <p className="mt-1 text-xs text-black/50">
+                  Click a release to play it here with Spotify.
+                </p>
+
+                {activeRelease && (
+                  <div className="mt-5 border border-ct-border bg-black p-3 md:p-4">
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-white">
+                          {activeRelease.name}
+                        </p>
+                        <p className="text-[10px] font-bold tracking-wide text-white/50 uppercase">
+                          {activeRelease.album_type}
+                          {activeRelease.release_date
+                            ? ` · ${activeRelease.release_date.slice(0, 4)}`
+                            : ''}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveRelease(null)}
+                        className="shrink-0 text-[10px] font-bold tracking-wide text-white/60 uppercase hover:text-white"
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <iframe
+                      title={`Spotify — ${activeRelease.name}`}
+                      src={`https://open.spotify.com/embed/album/${activeRelease.spotify_album_id}?utm_source=generator&theme=0`}
+                      width="100%"
+                      height="352"
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
+                      className="w-full border-0"
+                    />
+                  </div>
+                )}
+
+                <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {releases.slice(0, 20).map((release) => {
+                    const selected = activeRelease?.id === release.id
+                    return (
+                      <button
+                        key={release.id}
+                        type="button"
+                        onClick={() => setActiveRelease(release)}
+                        className={`group block text-left ${
+                          selected ? 'ring-2 ring-ct-orange ring-offset-2' : ''
+                        }`}
+                      >
+                        <div className="aspect-square bg-[#f3f3f3]">
+                          {release.image_url ? (
+                            <img
+                              src={release.image_url}
+                              alt=""
+                              className="h-full w-full object-contain"
+                            />
+                          ) : null}
+                        </div>
+                        <p className="mt-2 truncate text-sm font-bold group-hover:underline">
+                          {release.name}
+                        </p>
+                        <p className="truncate text-[10px] font-bold tracking-wide text-black/45 uppercase">
+                          {release.album_type}
+                          {release.release_date
+                            ? ` · ${release.release_date.slice(0, 4)}`
+                            : ''}
+                        </p>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            )}
+
+            {topTracks.length > 0 && (
+              <section className="mt-12">
+                <h2 className="text-xl font-black tracking-tight uppercase">
+                  Top tracks
+                </h2>
+                <p className="mt-1 text-xs text-black/50">
+                  Popular songs from Spotify. Artwork and links provided by
+                  Spotify.
+                </p>
                 <ol className="mt-5 divide-y divide-ct-border border border-ct-border">
                   {topTracks.map((track, i) => (
                     <li
@@ -249,12 +410,12 @@ export function ArtistProfilePage() {
                     </li>
                   ))}
                 </ol>
-              )}
-            </section>
+              </section>
+            )}
 
             <section className="mt-12">
               <h2 className="text-xl font-black tracking-tight uppercase">
-                On CreaseTalk
+                Videos
               </h2>
               <p className="mt-1 text-xs text-black/50">
                 Performances and interviews from our catalog.

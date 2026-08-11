@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase/client'
+import { syncArtistCatalogsFromSpotify } from '../lib/artists'
 import { ArtistImagePanel } from './ArtistImagePanel'
 import { SpotifyFixPanel } from './SpotifyFixPanel'
 
@@ -14,6 +15,7 @@ type ArtistRow = {
   followers: number
   spotify_url: string | null
   youtube_channel_id: string | null
+  instagram_url: string | null
   is_verified: boolean
   is_featured: boolean
   display_order: number
@@ -42,6 +44,8 @@ export function ArtistEditPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [syncingCatalog, setSyncingCatalog] = useState(false)
+  const [releaseCount, setReleaseCount] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [imageOpen, setImageOpen] = useState(false)
@@ -51,6 +55,7 @@ export function ArtistEditPage() {
   const [bio, setBio] = useState('')
   const [genresText, setGenresText] = useState('')
   const [youtubeChannelId, setYoutubeChannelId] = useState('')
+  const [instagramUrl, setInstagramUrl] = useState('')
   const [isVerified, setIsVerified] = useState(false)
   const [isFeatured, setIsFeatured] = useState(false)
   const [displayOrder, setDisplayOrder] = useState(0)
@@ -60,11 +65,11 @@ export function ArtistEditPage() {
     setLoading(true)
     setError(null)
     try {
-      const [artistRes, mediaRes] = await Promise.all([
+      const [artistRes, mediaRes, releasesRes] = await Promise.all([
         supabase
           .from('artists')
           .select(
-            'id, name, spotify_id, image_url, image_locked, genres, followers, spotify_url, youtube_channel_id, is_verified, is_featured, display_order, bio',
+            'id, name, spotify_id, image_url, image_locked, genres, followers, spotify_url, youtube_channel_id, instagram_url, is_verified, is_featured, display_order, bio',
           )
           .eq('id', artistId)
           .maybeSingle(),
@@ -76,6 +81,10 @@ export function ArtistEditPage() {
           .eq('artist_id', artistId)
           .eq('approval_status', 'approved')
           .order('published_at', { ascending: false }),
+        supabase
+          .from('artist_releases')
+          .select('id', { count: 'exact', head: true })
+          .eq('artist_id', artistId),
       ])
 
       if (artistRes.error) throw artistRes.error
@@ -91,10 +100,12 @@ export function ArtistEditPage() {
       setBio(row.bio ?? '')
       setGenresText((row.genres ?? []).join(', '))
       setYoutubeChannelId(row.youtube_channel_id ?? '')
+      setInstagramUrl(row.instagram_url ?? '')
       setIsVerified(row.is_verified)
       setIsFeatured(row.is_featured)
       setDisplayOrder(row.display_order)
       setVideos((mediaRes.data ?? []) as LinkedVideo[])
+      setReleaseCount(releasesRes.count ?? 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load artist')
     } finally {
@@ -125,6 +136,7 @@ export function ArtistEditPage() {
         bio: bio.trim() || null,
         genres: parseGenres(genresText),
         youtube_channel_id: youtubeChannelId.trim() || null,
+        instagram_url: instagramUrl.trim() || null,
         is_verified: isVerified,
         is_featured: isFeatured,
         display_order: Number.isFinite(displayOrder) ? displayOrder : 0,
@@ -160,6 +172,24 @@ export function ArtistEditPage() {
       setError(err instanceof Error ? err.message : 'Sync failed')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  async function syncCatalog() {
+    if (!artistId || syncingCatalog) return
+    setSyncingCatalog(true)
+    setMessage(null)
+    setError(null)
+    try {
+      const data = await syncArtistCatalogsFromSpotify(artistId)
+      const row = data.results?.[0]
+      if (row && !row.ok) throw new Error(row.error || 'Catalog sync failed')
+      setMessage(`Catalog synced — ${row?.releases ?? data.releases ?? 0} releases`)
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Catalog sync failed')
+    } finally {
+      setSyncingCatalog(false)
     }
   }
 
@@ -214,6 +244,16 @@ export function ArtistEditPage() {
             className="bg-black px-3 py-2 text-xs font-bold text-white uppercase disabled:opacity-50"
           >
             {syncing ? 'Syncing…' : 'Sync from Spotify'}
+          </button>
+          <button
+            type="button"
+            disabled={syncingCatalog || !artist.spotify_id}
+            onClick={() => void syncCatalog()}
+            className="border border-neutral-300 bg-white px-3 py-2 text-xs font-bold uppercase disabled:opacity-50"
+          >
+            {syncingCatalog
+              ? 'Catalog…'
+              : `Sync catalog (${releaseCount})`}
           </button>
           <button
             type="button"
@@ -316,6 +356,18 @@ export function ArtistEditPage() {
             <span className="mt-1 block text-xs text-neutral-400">
               Comma-separated. Saved to Supabase as the live profile genres.
             </span>
+          </label>
+
+          <label className="block">
+            <span className="text-[10px] font-bold tracking-[0.18em] text-neutral-500 uppercase">
+              Instagram URL
+            </span>
+            <input
+              value={instagramUrl}
+              onChange={(e) => setInstagramUrl(e.target.value)}
+              placeholder="https://instagram.com/…"
+              className="mt-2 w-full border border-neutral-300 px-3 py-2 text-sm"
+            />
           </label>
 
           <label className="block">

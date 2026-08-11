@@ -25,6 +25,7 @@ export const navLinks = [
   { label: 'ARTISTS', href: '/new-artists' },
   { label: 'VIDEOS', href: '/videos' },
   { label: 'MUSIC', href: '/new-music' },
+  { label: 'SHOP', href: '/shop' },
   { label: 'INTERVIEWS', href: '/#interviews' },
   { label: 'SUBMIT MUSIC', href: '/submit' },
 ] as const

@@ -14,8 +14,14 @@ type EnrichBody = {
   name?: string;
   /** Enrich all featured artists missing spotify_id (or force refresh) */
   syncFeatured?: boolean;
+  /** Fill empty bios from Last.fm for all artists (optional Spotify refresh) */
+  syncBios?: boolean;
+  /** Pull Spotify discography into artist_releases (one artist or all with spotify_id) */
+  syncCatalog?: boolean;
   /** Re-fetch Spotify even when spotify_id already set */
   force?: boolean;
+  /** Overwrite existing bio with Last.fm text */
+  forceBio?: boolean;
   /** Force-link a specific Spotify artist ID */
   spotifyId?: string;
   /** Spotify artist URL / URI — parsed into spotifyId */
@@ -23,7 +29,7 @@ type EnrichBody = {
   /** Search Spotify artists only (no DB write). Returns candidates. */
   searchQuery?: string;
   searchLimit?: number;
-  /** When linking, keep CreaseTalk display name (default true) */
+  /** When linking, keep CreaseTalk display name (default false = adopt Spotify) */
   keepName?: boolean;
 };
 
@@ -38,6 +44,17 @@ type SpotifyArtist = {
   name: string;
   genres?: string[];
   followers?: { total?: number };
+  images?: Array<{ url: string; height?: number; width?: number }>;
+  external_urls?: { spotify?: string };
+};
+
+type SpotifyAlbum = {
+  id: string;
+  name: string;
+  album_type?: string;
+  release_date?: string;
+  release_date_precision?: string;
+  total_tracks?: number;
   images?: Array<{ url: string; height?: number; width?: number }>;
   external_urls?: { spotify?: string };
 };
@@ -185,6 +202,121 @@ function toCandidate(artist: SpotifyArtist) {
   };
 }
 
+/** Strip Last.fm HTML / "Read more on Last.fm" footnotes from bio text */
+function cleanLastFmBio(raw: string | undefined | null): string | null {
+  if (!raw?.trim()) return null;
+  let text = raw
+    .replace(/<a\b[^>]*>[\s\S]*?<\/a>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  text = text.replace(/\s*Read more on Last\.fm\.?\s*$/i, "").trim();
+  if (!text || /^no biography available\.?$/i.test(text)) return null;
+  return text;
+}
+
+async function fetchSpotifyArtistAlbums(
+  token: string,
+  spotifyArtistId: string,
+): Promise<SpotifyAlbum[]> {
+  const albums: SpotifyAlbum[] = [];
+  // Spotify currently rejects limit > 10 on this endpoint
+  let url: string | null =
+    `https://api.spotify.com/v1/artists/${encodeURIComponent(spotifyArtistId)}/albums?include_groups=album%2Csingle&market=US&limit=10`;
+
+  while (url) {
+    const res: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Spotify albums error (${res.status}): ${text}`);
+    }
+    const data = await res.json();
+    albums.push(...((data?.items ?? []) as SpotifyAlbum[]));
+    url = (data?.next as string | null) ?? null;
+  }
+
+  // Dedupe by album id (Spotify can return duplicates across markets/groups)
+  const seen = new Set<string>();
+  return albums.filter((a) => {
+    if (!a?.id || seen.has(a.id)) return false;
+    seen.add(a.id);
+    return true;
+  });
+}
+
+async function syncArtistCatalog(
+  supabase: ReturnType<typeof createClient>,
+  token: string,
+  artist: { id: string; name: string; spotify_id: string | null },
+) {
+  if (!artist.spotify_id) {
+    throw new Error(`No Spotify ID for "${artist.name}"`);
+  }
+
+  const albums = await fetchSpotifyArtistAlbums(token, artist.spotify_id);
+  const now = new Date().toISOString();
+  const rows = albums.map((a) => ({
+    artist_id: artist.id,
+    spotify_album_id: a.id,
+    name: a.name,
+    album_type: (["album", "single", "compilation", "appears_on"].includes(
+      a.album_type ?? "",
+    )
+      ? a.album_type
+      : "album") as string,
+    release_date: a.release_date ?? null,
+    release_date_precision: a.release_date_precision ?? null,
+    total_tracks: a.total_tracks ?? 0,
+    image_url: pickImage(a as unknown as SpotifyArtist),
+    spotify_url: a.external_urls?.spotify ?? null,
+    updated_at: now,
+  }));
+
+  // Replace catalog snapshot for this artist
+  const { error: delError } = await supabase
+    .from("artist_releases")
+    .delete()
+    .eq("artist_id", artist.id);
+  if (delError) throw new Error(delError.message);
+
+  if (rows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from("artist_releases")
+      .insert(rows);
+    if (upsertError) throw new Error(upsertError.message);
+  }
+
+  return { count: rows.length };
+}
+
+async function fetchLastFmBio(
+  artistName: string,
+  apiKey: string,
+): Promise<string | null> {
+  const url = new URL("https://ws.audioscrobbler.com/2.0/");
+  url.searchParams.set("method", "artist.getinfo");
+  url.searchParams.set("artist", artistName);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("format", "json");
+  url.searchParams.set("autocorrect", "1");
+
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Last.fm error (${res.status})`);
+  }
+  const data = await res.json();
+  if (data?.error) {
+    // 6 = not found — soft miss
+    if (data.error === 6) return null;
+    throw new Error(data.message ?? `Last.fm error ${data.error}`);
+  }
+  const summary = data?.artist?.bio?.summary as string | undefined;
+  const content = data?.artist?.bio?.content as string | undefined;
+  return cleanLastFmBio(summary) ?? cleanLastFmBio(content);
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -211,11 +343,115 @@ Deno.serve(async (req: Request) => {
 
     const body = (await req.json().catch(() => ({}))) as EnrichBody;
     const force = Boolean(body.force);
+    const forceBio = Boolean(body.forceBio);
     // Default: adopt Spotify spelling. Pass keepName:true to preserve CreaseTalk name.
     const keepName = body.keepName === true;
+    const lastFmKey = Deno.env.get("LASTFM_API_KEY") ?? "";
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     const token = await getSpotifyToken(spotifyClientId, spotifyClientSecret);
+
+    // Pull Spotify discography into artist_releases
+    if (body.syncCatalog) {
+      let query = supabase
+        .from("artists")
+        .select("id, name, spotify_id")
+        .not("spotify_id", "is", null)
+        .order("name", { ascending: true });
+
+      if (body.artistId) {
+        query = query.eq("id", body.artistId);
+      }
+
+      const { data: rows, error } = await query;
+      if (error) return json({ error: error.message }, 500);
+
+      const results = [];
+      for (const row of rows ?? []) {
+        try {
+          const synced = await syncArtistCatalog(supabase, token, row);
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: true,
+            releases: synced.count,
+          });
+        } catch (err) {
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      return json({
+        synced: results.length,
+        releases: results.reduce(
+          (sum, r) => sum + (r.ok ? (r.releases as number) : 0),
+          0,
+        ),
+        results,
+      });
+    }
+
+    // Bulk Last.fm bios for artists missing bio text
+    if (body.syncBios) {
+      if (!lastFmKey) {
+        return json(
+          {
+            error:
+              "Missing LASTFM_API_KEY in Edge Function secrets. Add it in the Supabase dashboard.",
+          },
+          500,
+        );
+      }
+
+      let query = supabase
+        .from("artists")
+        .select("id, name, spotify_id, image_locked, bio")
+        .order("name", { ascending: true });
+
+      if (!forceBio) {
+        query = query.or("bio.is.null,bio.eq.");
+      }
+
+      const { data: rows, error } = await query;
+      if (error) return json({ error: error.message }, 500);
+
+      const results = [];
+      for (const row of rows ?? []) {
+        try {
+          const enriched = await enrichRow(supabase, token, row, {
+            force,
+            keepName: true,
+            forceBio,
+            lastFmKey,
+            fillBio: true,
+          });
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: true,
+            bio: enriched?.bio ?? null,
+          });
+        } catch (err) {
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
+      return json({
+        synced: results.length,
+        filled: results.filter((r) => r.ok && r.bio).length,
+        results,
+      });
+    }
 
     // Search-only mode for admin correction UI
     if (body.searchQuery?.trim()) {
@@ -248,7 +484,7 @@ Deno.serve(async (req: Request) => {
     if (body.syncFeatured) {
       let query = supabase
         .from("artists")
-        .select("id, name, spotify_id, image_locked")
+        .select("id, name, spotify_id, image_locked, bio")
         .eq("is_featured", true)
         .order("display_order", { ascending: true });
 
@@ -265,6 +501,9 @@ Deno.serve(async (req: Request) => {
           const enriched = await enrichRow(supabase, token, row, {
             force,
             keepName,
+            forceBio,
+            lastFmKey,
+            fillBio: true,
           });
           results.push({
             id: row.id,
@@ -301,12 +540,13 @@ Deno.serve(async (req: Request) => {
       name: string;
       spotify_id: string | null;
       image_locked: boolean;
+      bio: string | null;
     } | null = null;
 
     if (body.artistId) {
       const { data, error } = await supabase
         .from("artists")
-        .select("id, name, spotify_id, image_locked")
+        .select("id, name, spotify_id, image_locked, bio")
         .eq("id", body.artistId)
         .maybeSingle();
       if (error) return json({ error: error.message }, 500);
@@ -317,7 +557,7 @@ Deno.serve(async (req: Request) => {
       if (linkedId) {
         const { data: bySpotify, error: bySpotifyError } = await supabase
           .from("artists")
-          .select("id, name, spotify_id, image_locked")
+          .select("id, name, spotify_id, image_locked, bio")
           .eq("spotify_id", linkedId)
           .maybeSingle();
         if (bySpotifyError) {
@@ -330,7 +570,7 @@ Deno.serve(async (req: Request) => {
         const name = body.name.trim();
         const { data: existing } = await supabase
           .from("artists")
-          .select("id, name, spotify_id, image_locked")
+          .select("id, name, spotify_id, image_locked, bio")
           .ilike("name", name)
           .maybeSingle();
 
@@ -340,7 +580,7 @@ Deno.serve(async (req: Request) => {
           const { data: created, error: createError } = await supabase
             .from("artists")
             .insert({ name, is_featured: false })
-            .select("id, name, spotify_id, image_locked")
+            .select("id, name, spotify_id, image_locked, bio")
             .single();
           if (createError) return json({ error: createError.message }, 500);
           row = created;
@@ -350,7 +590,7 @@ Deno.serve(async (req: Request) => {
         const { data: created, error: createError } = await supabase
           .from("artists")
           .insert({ name: spotifyArtist.name, is_featured: false })
-          .select("id, name, spotify_id, image_locked")
+          .select("id, name, spotify_id, image_locked, bio")
           .single();
         if (createError) return json({ error: createError.message }, 500);
         row = created;
@@ -363,6 +603,9 @@ Deno.serve(async (req: Request) => {
       force,
       keepName,
       forcedSpotifyId: linkedId,
+      forceBio,
+      lastFmKey,
+      fillBio: true,
     });
     return json({ artist });
   } catch (err) {
@@ -381,11 +624,15 @@ async function enrichRow(
     name: string;
     spotify_id: string | null;
     image_locked?: boolean | null;
+    bio?: string | null;
   },
   options: {
     force: boolean;
     keepName: boolean;
     forcedSpotifyId?: string | null;
+    forceBio?: boolean;
+    lastFmKey?: string;
+    fillBio?: boolean;
   },
 ) {
   let spotifyId = options.forcedSpotifyId || row.spotify_id;
@@ -414,6 +661,24 @@ async function enrichRow(
     options.keepName,
     Boolean(row.image_locked),
   );
+
+  const displayName = options.keepName
+    ? row.name
+    : (spotifyArtist.name || row.name);
+  const needsBio =
+    options.fillBio &&
+    options.lastFmKey &&
+    (options.forceBio || !row.bio?.trim());
+
+  if (needsBio) {
+    try {
+      const bio = await fetchLastFmBio(displayName, options.lastFmKey!);
+      if (bio) fields.bio = bio;
+    } catch (bioErr) {
+      console.error("Last.fm bio fetch failed", displayName, bioErr);
+    }
+  }
+
   const { data, error } = await supabase
     .from("artists")
     .update(fields)

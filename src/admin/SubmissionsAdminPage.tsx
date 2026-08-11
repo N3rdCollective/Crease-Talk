@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   flexRender,
   getCoreRowModel,
@@ -32,6 +33,7 @@ export function SubmissionsAdminPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [signed, setSigned] = useState<Record<string, SignedBundle>>({})
   const [busyId, setBusyId] = useState<string | null>(null)
+  const [lastArtistId, setLastArtistId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -96,12 +98,23 @@ export function SubmissionsAdminPage() {
   const approve = async (id: string) => {
     setBusyId(id)
     setMessage(null)
-    const { data, error } = await supabase.functions.invoke(
-      'promote-submission',
-      { body: { submissionId: id } },
-    )
-    if (error) setMessage(error.message)
-    else setMessage(`Approved & promoted — media ${data?.mediaAssetId ?? ''}`)
+    setLastArtistId(null)
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'promote-submission',
+        { body: { submissionId: id } },
+      )
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      if (data?.artistId) setLastArtistId(String(data.artistId))
+      setMessage(
+        data?.alreadyPromoted
+          ? 'Already promoted — artist profile ready'
+          : 'Approved & promoted to artist profile',
+      )
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Approve failed')
+    }
     await load()
     setBusyId(null)
   }
@@ -130,7 +143,7 @@ export function SubmissionsAdminPage() {
         id: 'meta',
         header: 'Submission',
         cell: ({ row }) => (
-          <div className="min-w-[160px]">
+          <div className="min-w-[180px] max-w-[260px]">
             <p className="font-bold">{row.original.track_title}</p>
             <p className="text-xs text-neutral-600">
               {row.original.artist_name}
@@ -139,6 +152,11 @@ export function SubmissionsAdminPage() {
             <p className="text-[11px] text-neutral-500">
               {row.original.contact_email}
             </p>
+            {row.original.notes && (
+              <p className="mt-1 line-clamp-2 text-[11px] text-neutral-500">
+                {row.original.notes}
+              </p>
+            )}
           </div>
         ),
       },
@@ -197,11 +215,12 @@ export function SubmissionsAdminPage() {
         header: 'Actions',
         cell: ({ row }) => {
           const busy = busyId === row.original.id
+          const pending = row.original.status === 'pending'
           return (
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !pending}
                 className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white uppercase disabled:opacity-50"
                 onClick={() => void approve(row.original.id)}
               >
@@ -209,12 +228,20 @@ export function SubmissionsAdminPage() {
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || !pending}
                 className="rounded bg-red-600 px-2 py-1 text-[10px] font-bold text-white uppercase disabled:opacity-50"
                 onClick={() => void setStatus(row.original.id, 'rejected')}
               >
                 Reject
               </button>
+              {row.original.status === 'approved' && (
+                <Link
+                  to="/admin/artists"
+                  className="rounded border border-neutral-300 bg-white px-2 py-1 text-[10px] font-bold uppercase"
+                >
+                  Profiles
+                </Link>
+              )}
             </div>
           )
         },
@@ -238,7 +265,22 @@ export function SubmissionsAdminPage() {
         Cover art, inline audio, and one-click approve/reject for incoming
         submissions.
       </p>
-      {message && <p className="mt-4 text-sm text-neutral-600">{message}</p>}
+      {message && (
+        <p className="mt-4 text-sm text-neutral-600">
+          {message}
+          {lastArtistId && (
+            <>
+              {' '}
+              <Link
+                to={`/admin/artists/${lastArtistId}`}
+                className="font-bold text-ct-orange underline"
+              >
+                Edit artist profile
+              </Link>
+            </>
+          )}
+        </p>
+      )}
 
       <div className="mt-6 overflow-x-auto border border-neutral-200 bg-white">
         {loading ? (

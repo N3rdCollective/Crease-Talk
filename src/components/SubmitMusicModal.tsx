@@ -245,7 +245,7 @@ export function SubmitMusicModal({ open, onClose }: Props) {
               <input
                 required
                 type="file"
-                accept=".mp3,.wav,audio/mpeg,audio/wav"
+                accept=".mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*"
                 onChange={(e) => setAudio(e.target.files?.[0] ?? null)}
                 className="mt-1 block w-full text-sm font-normal normal-case"
               />
@@ -254,7 +254,7 @@ export function SubmitMusicModal({ open, onClose }: Props) {
               Cover art (JPG/PNG)
               <input
                 type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                 onChange={(e) => setCover(e.target.files?.[0] ?? null)}
                 className="mt-1 block w-full text-sm font-normal normal-case"
               />
