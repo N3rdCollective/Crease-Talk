@@ -95,7 +95,11 @@ export function SpotifyFixPanel({
       )
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
-      onLinked(data?.artist?.name ?? candidateName)
+      const name = data?.artist?.name ?? candidateName
+      if (data?.lastFmConfigured === false) {
+        console.warn('LASTFM_API_KEY not set — bio was skipped')
+      }
+      onLinked(name)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Link failed')
       setBusy(null)
@@ -171,6 +175,11 @@ export function SpotifyFixPanel({
             <h4 className="text-xs font-bold tracking-wide uppercase">
               Search Spotify
             </h4>
+            <p className="mt-1 text-xs text-neutral-500">
+              {isAdd
+                ? 'Add pulls Spotify profile, Last.fm bio, and discography in one step.'
+                : 'Use pulls Spotify profile, Last.fm bio (if empty), and discography.'}
+            </p>
             <div className="mt-2 flex gap-2">
               <input
                 autoFocus={isAdd}

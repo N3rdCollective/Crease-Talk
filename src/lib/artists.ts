@@ -32,9 +32,9 @@ export async function fetchAllArtists(): Promise<ArtistRow[]> {
   const { data, error } = await supabase
     .from('artists')
     .select(
-      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio, is_featured, display_order',
+      'id, name, spotify_id, image_url, genres, followers, spotify_url, is_verified, bio, is_featured, display_order, created_at',
     )
-    .order('followers', { ascending: false })
+    .order('created_at', { ascending: false })
 
   if (error) throw error
   return (data ?? []) as ArtistRow[]
@@ -72,6 +72,35 @@ export async function syncArtistBiosFromLastFm(forceBio = false) {
   }
 }
 
+/** One-shot: Spotify profile + empty bios + discography for every artist. */
+export async function syncAllArtistsProfiles() {
+  const { data, error } = await supabase.functions.invoke(
+    'spotify-enrich-artist',
+    {
+      body: { syncAll: true },
+    },
+  )
+
+  if (error) throw error
+  if (data?.error) throw new Error(data.error)
+  return data as {
+    synced: number
+    ok: number
+    withBio: number
+    releases: number
+    lastFmConfigured: boolean
+    results: Array<{
+      id: string
+      name: string
+      ok: boolean
+      bio?: string | null
+      releases?: number
+      catalogError?: string | null
+      error?: string
+    }>
+  }
+}
+
 export type ArtistRelease = {
   id: string
   artist_id: string
@@ -82,6 +111,54 @@ export type ArtistRelease = {
   total_tracks: number
   image_url: string | null
   spotify_url: string | null
+}
+
+export type CatalogRelease = ArtistRelease & {
+  artist: {
+    id: string
+    name: string
+    image_url: string | null
+    is_verified: boolean
+  } | null
+}
+
+/** Newest albums/singles across all CreaseTalk artists (Spotify catalog cache). */
+export async function fetchLatestReleases(
+  limit = 48,
+): Promise<CatalogRelease[]> {
+  const { data, error } = await supabase
+    .from('artist_releases')
+    .select(
+      'id, artist_id, spotify_album_id, name, album_type, release_date, total_tracks, image_url, spotify_url, artists!inner(id, name, image_url, is_verified)',
+    )
+    .in('album_type', ['album', 'single'])
+    .order('release_date', { ascending: false, nullsFirst: false })
+    .limit(limit)
+
+  if (error) throw error
+
+  return (data ?? []).map((row) => {
+    const raw = row as Record<string, unknown>
+    const artistJoin = raw.artists as
+      | CatalogRelease['artist']
+      | CatalogRelease['artist'][]
+      | null
+    const artist = Array.isArray(artistJoin)
+      ? (artistJoin[0] ?? null)
+      : (artistJoin ?? null)
+    return {
+      id: String(raw.id),
+      artist_id: String(raw.artist_id),
+      spotify_album_id: String(raw.spotify_album_id),
+      name: String(raw.name),
+      album_type: raw.album_type as ArtistRelease['album_type'],
+      release_date: (raw.release_date as string | null) ?? null,
+      total_tracks: Number(raw.total_tracks ?? 0),
+      image_url: (raw.image_url as string | null) ?? null,
+      spotify_url: (raw.spotify_url as string | null) ?? null,
+      artist,
+    }
+  })
 }
 
 /** Pull Spotify albums/singles into artist_releases for one or all artists. */

@@ -18,6 +18,8 @@ type EnrichBody = {
   syncBios?: boolean;
   /** Pull Spotify discography into artist_releases (one artist or all with spotify_id) */
   syncCatalog?: boolean;
+  /** One-shot: refresh every artist profile + empty bios + discography */
+  syncAll?: boolean;
   /** Re-fetch Spotify even when spotify_id already set */
   force?: boolean;
   /** Overwrite existing bio with Last.fm text */
@@ -177,11 +179,15 @@ function mapSpotifyFields(
 ) {
   const fields: Record<string, unknown> = {
     spotify_id: artist.id,
-    genres: artist.genres ?? [],
     followers: artist.followers?.total ?? 0,
     spotify_url: artist.external_urls?.spotify ?? null,
     updated_at: new Date().toISOString(),
   };
+  // Spotify often returns empty genres now — only write when present
+  const spotifyGenres = (artist.genres ?? []).filter(Boolean);
+  if (spotifyGenres.length > 0) {
+    fields.genres = spotifyGenres;
+  }
   if (!keepImage) {
     fields.image_url = pickImage(artist);
   }
@@ -291,10 +297,10 @@ async function syncArtistCatalog(
   return { count: rows.length };
 }
 
-async function fetchLastFmBio(
+async function fetchLastFmArtistInfo(
   artistName: string,
   apiKey: string,
-): Promise<string | null> {
+): Promise<{ bio: string | null; genres: string[] }> {
   const url = new URL("https://ws.audioscrobbler.com/2.0/");
   url.searchParams.set("method", "artist.getinfo");
   url.searchParams.set("artist", artistName);
@@ -309,12 +315,107 @@ async function fetchLastFmBio(
   const data = await res.json();
   if (data?.error) {
     // 6 = not found — soft miss
-    if (data.error === 6) return null;
+    if (data.error === 6) return { bio: null, genres: [] };
     throw new Error(data.message ?? `Last.fm error ${data.error}`);
   }
   const summary = data?.artist?.bio?.summary as string | undefined;
   const content = data?.artist?.bio?.content as string | undefined;
-  return cleanLastFmBio(summary) ?? cleanLastFmBio(content);
+  const rawTags = (data?.artist?.tags?.tag ?? []) as Array<{
+    name?: string;
+  }>;
+  const genres = normalizeLastFmTags(rawTags.map((t) => t.name ?? ""));
+  return {
+    bio: cleanLastFmBio(summary) ?? cleanLastFmBio(content),
+    genres,
+  };
+}
+
+/** Map Last.fm tags onto readable genre labels (top tags only). */
+function normalizeLastFmTags(tags: string[]): string[] {
+  const aliases: Record<string, string> = {
+    "hip hop": "Hip Hop",
+    "hip-hop": "Hip Hop",
+    hiphop: "Hip Hop",
+    rap: "Rap",
+    "r&b": "R&B",
+    rnb: "R&B",
+    "rhythm and blues": "R&B",
+    "alternative r&b": "Alternative R&B",
+    trap: "Trap",
+    drill: "Drill",
+    "uk drill": "UK Drill",
+    grime: "Grime",
+    afrobeats: "Afrobeats",
+    afrobeat: "Afrobeats",
+    amapiano: "Amapiano",
+    dancehall: "Dancehall",
+    reggae: "Reggae",
+    reggaeton: "Reggaeton",
+    pop: "Pop",
+    "pop rap": "Pop Rap",
+    soul: "Soul",
+    funk: "Funk",
+    jazz: "Jazz",
+    electronic: "Electronic",
+    edm: "EDM",
+    house: "House",
+    techno: "Techno",
+    indie: "Indie",
+    "indie pop": "Indie Pop",
+    alternative: "Alternative",
+    rock: "Rock",
+    metal: "Metal",
+    country: "Country",
+    folk: "Folk",
+    gospel: "Gospel",
+    latin: "Latin",
+    "lo-fi": "Lo-fi",
+    lofi: "Lo-fi",
+    "emo rap": "Emo Rap",
+    "underground hip hop": "Underground Hip Hop",
+    "gangsta rap": "Gangsta Rap",
+    "boom bap": "Boom Bap",
+    "jersey club": "Jersey Club",
+    "uk rap": "UK Rap",
+    "seen live": "",
+    favorites: "",
+    favourite: "",
+    "under 2000 listeners": "",
+  };
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of tags) {
+    const key = raw.trim().toLowerCase();
+    if (!key) continue;
+    if (key in aliases) {
+      const mapped = aliases[key];
+      if (!mapped) continue;
+      if (seen.has(mapped.toLowerCase())) continue;
+      seen.add(mapped.toLowerCase());
+      out.push(mapped);
+    } else {
+      // Skip noisy meta tags
+      if (
+        key.includes("listen") ||
+        key.includes("favorite") ||
+        key.includes("favourite") ||
+        key.includes("seen live")
+      ) {
+        continue;
+      }
+      const label = raw
+        .trim()
+        .split(/\s+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(" ");
+      if (seen.has(label.toLowerCase())) continue;
+      seen.add(label.toLowerCase());
+      out.push(label);
+    }
+    if (out.length >= 5) break;
+  }
+  return out;
 }
 
 Deno.serve(async (req: Request) => {
@@ -396,6 +497,78 @@ Deno.serve(async (req: Request) => {
       });
     }
 
+    // One-shot backfill: Spotify profile + Last.fm bio (if empty) + discography
+    if (body.syncAll) {
+      const { data: rows, error } = await supabase
+        .from("artists")
+        .select("id, name, spotify_id, image_locked, bio, genres")
+        .order("name", { ascending: true });
+      if (error) return json({ error: error.message }, 500);
+
+      const results = [];
+      for (const row of rows ?? []) {
+        try {
+          const enriched = await enrichRow(supabase, token, row, {
+            force: true,
+            keepName: true,
+            forceBio,
+            lastFmKey,
+            fillBio: true,
+            fillGenres: true,
+          });
+
+          let releases = 0;
+          let catalogError: string | null = null;
+          if (enriched?.spotify_id) {
+            try {
+              const synced = await syncArtistCatalog(supabase, token, {
+                id: enriched.id,
+                name: enriched.name,
+                spotify_id: enriched.spotify_id,
+              });
+              releases = synced.count;
+            } catch (catalogErr) {
+              catalogError =
+                catalogErr instanceof Error
+                  ? catalogErr.message
+                  : String(catalogErr);
+            }
+          }
+
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: true,
+            bio: enriched?.bio ?? null,
+            releases,
+            catalogError,
+          });
+        } catch (err) {
+          results.push({
+            id: row.id,
+            name: row.name,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+
+        // Soft rate-limit between artists (Spotify / Last.fm)
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
+
+      return json({
+        synced: results.length,
+        ok: results.filter((r) => r.ok).length,
+        withBio: results.filter((r) => r.ok && r.bio).length,
+        releases: results.reduce(
+          (sum, r) => sum + (r.ok ? Number(r.releases ?? 0) : 0),
+          0,
+        ),
+        lastFmConfigured: Boolean(lastFmKey),
+        results,
+      });
+    }
+
     // Bulk Last.fm bios for artists missing bio text
     if (body.syncBios) {
       if (!lastFmKey) {
@@ -410,7 +583,7 @@ Deno.serve(async (req: Request) => {
 
       let query = supabase
         .from("artists")
-        .select("id, name, spotify_id, image_locked, bio")
+        .select("id, name, spotify_id, image_locked, bio, genres")
         .order("name", { ascending: true });
 
       if (!forceBio) {
@@ -429,6 +602,7 @@ Deno.serve(async (req: Request) => {
             forceBio,
             lastFmKey,
             fillBio: true,
+            fillGenres: true,
           });
           results.push({
             id: row.id,
@@ -484,7 +658,7 @@ Deno.serve(async (req: Request) => {
     if (body.syncFeatured) {
       let query = supabase
         .from("artists")
-        .select("id, name, spotify_id, image_locked, bio")
+        .select("id, name, spotify_id, image_locked, bio, genres")
         .eq("is_featured", true)
         .order("display_order", { ascending: true });
 
@@ -504,6 +678,7 @@ Deno.serve(async (req: Request) => {
             forceBio,
             lastFmKey,
             fillBio: true,
+            fillGenres: true,
           });
           results.push({
             id: row.id,
@@ -546,7 +721,7 @@ Deno.serve(async (req: Request) => {
     if (body.artistId) {
       const { data, error } = await supabase
         .from("artists")
-        .select("id, name, spotify_id, image_locked, bio")
+        .select("id, name, spotify_id, image_locked, bio, genres")
         .eq("id", body.artistId)
         .maybeSingle();
       if (error) return json({ error: error.message }, 500);
@@ -557,7 +732,7 @@ Deno.serve(async (req: Request) => {
       if (linkedId) {
         const { data: bySpotify, error: bySpotifyError } = await supabase
           .from("artists")
-          .select("id, name, spotify_id, image_locked, bio")
+          .select("id, name, spotify_id, image_locked, bio, genres")
           .eq("spotify_id", linkedId)
           .maybeSingle();
         if (bySpotifyError) {
@@ -570,7 +745,7 @@ Deno.serve(async (req: Request) => {
         const name = body.name.trim();
         const { data: existing } = await supabase
           .from("artists")
-          .select("id, name, spotify_id, image_locked, bio")
+          .select("id, name, spotify_id, image_locked, bio, genres")
           .ilike("name", name)
           .maybeSingle();
 
@@ -580,7 +755,7 @@ Deno.serve(async (req: Request) => {
           const { data: created, error: createError } = await supabase
             .from("artists")
             .insert({ name, is_featured: false })
-            .select("id, name, spotify_id, image_locked, bio")
+            .select("id, name, spotify_id, image_locked, bio, genres")
             .single();
           if (createError) return json({ error: createError.message }, 500);
           row = created;
@@ -590,7 +765,7 @@ Deno.serve(async (req: Request) => {
         const { data: created, error: createError } = await supabase
           .from("artists")
           .insert({ name: spotifyArtist.name, is_featured: false })
-          .select("id, name, spotify_id, image_locked, bio")
+          .select("id, name, spotify_id, image_locked, bio, genres")
           .single();
         if (createError) return json({ error: createError.message }, 500);
         row = created;
@@ -599,6 +774,12 @@ Deno.serve(async (req: Request) => {
 
     if (!row) return json({ error: "Unable to resolve artist row" }, 500);
 
+    if (!lastFmKey) {
+      console.warn(
+        "LASTFM_API_KEY missing — Spotify sync will skip biography",
+      );
+    }
+
     const artist = await enrichRow(supabase, token, row, {
       force,
       keepName,
@@ -606,8 +787,36 @@ Deno.serve(async (req: Request) => {
       forceBio,
       lastFmKey,
       fillBio: true,
+      fillGenres: true,
     });
-    return json({ artist });
+
+    // One-shot: also pull discography whenever we enrich a single artist
+    let releases = 0;
+    let catalogError: string | null = null;
+    if (artist?.spotify_id) {
+      try {
+        const synced = await syncArtistCatalog(supabase, token, {
+          id: artist.id,
+          name: artist.name,
+          spotify_id: artist.spotify_id,
+        });
+        releases = synced.count;
+      } catch (catalogErr) {
+        catalogError =
+          catalogErr instanceof Error
+            ? catalogErr.message
+            : String(catalogErr);
+        console.error("Catalog sync after enrich failed", catalogError);
+      }
+    }
+
+    return json({
+      artist,
+      releases,
+      bioFilled: Boolean(artist?.bio?.trim()),
+      catalogError,
+      lastFmConfigured: Boolean(lastFmKey),
+    });
   } catch (err) {
     return json(
       { error: err instanceof Error ? err.message : String(err) },
@@ -625,14 +834,17 @@ async function enrichRow(
     spotify_id: string | null;
     image_locked?: boolean | null;
     bio?: string | null;
+    genres?: string[] | null;
   },
   options: {
     force: boolean;
     keepName: boolean;
     forcedSpotifyId?: string | null;
     forceBio?: boolean;
+    forceGenres?: boolean;
     lastFmKey?: string;
     fillBio?: boolean;
+    fillGenres?: boolean;
   },
 ) {
   let spotifyId = options.forcedSpotifyId || row.spotify_id;
@@ -665,17 +877,26 @@ async function enrichRow(
   const displayName = options.keepName
     ? row.name
     : (spotifyArtist.name || row.name);
+
+  const existingGenres = (row.genres ?? []).filter(Boolean);
   const needsBio =
     options.fillBio &&
     options.lastFmKey &&
     (options.forceBio || !row.bio?.trim());
+  const needsGenres =
+    options.fillGenres &&
+    options.lastFmKey &&
+    (options.forceGenres ||
+      (!existingGenres.length &&
+        !(Array.isArray(fields.genres) && fields.genres.length > 0)));
 
-  if (needsBio) {
+  if ((needsBio || needsGenres) && options.lastFmKey) {
     try {
-      const bio = await fetchLastFmBio(displayName, options.lastFmKey!);
-      if (bio) fields.bio = bio;
-    } catch (bioErr) {
-      console.error("Last.fm bio fetch failed", displayName, bioErr);
+      const info = await fetchLastFmArtistInfo(displayName, options.lastFmKey);
+      if (needsBio && info.bio) fields.bio = info.bio;
+      if (needsGenres && info.genres.length > 0) fields.genres = info.genres;
+    } catch (lastFmErr) {
+      console.error("Last.fm enrich failed", displayName, lastFmErr);
     }
   }
 

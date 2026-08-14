@@ -8,7 +8,7 @@ import {
 } from 'react'
 import type { Product } from './products'
 
-const STORAGE_KEY = 'creasetalk-cart-v1'
+const STORAGE_KEY = 'creasetalk-cart-v2'
 
 export type CartLine = {
   productId: string
@@ -17,6 +17,7 @@ export type CartLine = {
   image_url: string | null
   stripe_price_id: string | null
   size: string | null
+  color: string | null
   quantity: number
 }
 
@@ -26,17 +27,35 @@ type CartContextValue = {
   subtotal: number
   addItem: (
     product: Product,
-    opts: { size: string | null; quantity: number },
+    opts: {
+      size: string | null
+      color: string | null
+      quantity: number
+      image_url?: string | null
+    },
   ) => void
-  setQuantity: (productId: string, size: string | null, quantity: number) => void
-  removeItem: (productId: string, size: string | null) => void
+  setQuantity: (
+    productId: string,
+    size: string | null,
+    color: string | null,
+    quantity: number,
+  ) => void
+  removeItem: (
+    productId: string,
+    size: string | null,
+    color: string | null,
+  ) => void
   clear: () => void
 }
 
 const CartContext = createContext<CartContextValue | null>(null)
 
-function lineKey(productId: string, size: string | null) {
-  return `${productId}::${size ?? ''}`
+function lineKey(
+  productId: string,
+  size: string | null,
+  color: string | null,
+) {
+  return `${productId}::${size ?? ''}::${color ?? ''}`
 }
 
 function loadStored(): CartLine[] {
@@ -72,14 +91,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       subtotal,
       addItem(product, opts) {
         const qty = Math.max(1, Math.min(20, Math.floor(opts.quantity)))
+        const color = opts.color ?? null
         setLines((prev) => {
-          const key = lineKey(product.id, opts.size)
+          const key = lineKey(product.id, opts.size, color)
           const existing = prev.find(
-            (l) => lineKey(l.productId, l.size) === key,
+            (l) => lineKey(l.productId, l.size, l.color) === key,
           )
           if (existing) {
             return prev.map((l) =>
-              lineKey(l.productId, l.size) === key
+              lineKey(l.productId, l.size, l.color) === key
                 ? { ...l, quantity: Math.min(20, l.quantity + qty) }
                 : l,
             )
@@ -90,31 +110,39 @@ export function CartProvider({ children }: { children: ReactNode }) {
               productId: product.id,
               name: product.name,
               price: Number(product.price),
-              image_url: product.image_url,
+              image_url: opts.image_url ?? product.image_url,
               stripe_price_id: product.stripe_price_id,
               size: opts.size,
+              color,
               quantity: qty,
             },
           ]
         })
       },
-      setQuantity(productId, size, quantity) {
+      setQuantity(productId, size, color, quantity) {
         const next = Math.floor(quantity)
         setLines((prev) => {
           if (next <= 0) {
-            return prev.filter((l) => lineKey(l.productId, l.size) !== lineKey(productId, size))
+            return prev.filter(
+              (l) =>
+                lineKey(l.productId, l.size, l.color) !==
+                lineKey(productId, size, color),
+            )
           }
           return prev.map((l) =>
-            lineKey(l.productId, l.size) === lineKey(productId, size)
+            lineKey(l.productId, l.size, l.color) ===
+            lineKey(productId, size, color)
               ? { ...l, quantity: Math.min(20, next) }
               : l,
           )
         })
       },
-      removeItem(productId, size) {
+      removeItem(productId, size, color) {
         setLines((prev) =>
           prev.filter(
-            (l) => lineKey(l.productId, l.size) !== lineKey(productId, size),
+            (l) =>
+              lineKey(l.productId, l.size, l.color) !==
+              lineKey(productId, size, color),
           ),
         )
       },

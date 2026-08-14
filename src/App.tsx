@@ -24,6 +24,7 @@ import { ArtistsAdminPage } from './admin/ArtistsAdminPage'
 import { ArtistEditPage } from './admin/ArtistEditPage'
 import { SubmissionsAdminPage } from './admin/SubmissionsAdminPage'
 import { StaffPage } from './admin/StaffPage'
+import { ShopAdminPage } from './admin/ShopAdminPage'
 
 function PublicShell({ children }: { children: ReactNode }) {
   return (
@@ -61,6 +62,7 @@ export default function App() {
           <Route path="artists" element={<ArtistsAdminPage />} />
           <Route path="artists/:artistId" element={<ArtistEditPage />} />
           <Route path="submissions" element={<SubmissionsAdminPage />} />
+          <Route path="shop" element={<ShopAdminPage />} />
           <Route path="staff" element={<StaffPage />} />
           <Route path="account" element={<AdminAccountPage />} />
         </Route>

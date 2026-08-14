@@ -8,6 +8,7 @@ import {
 } from '@tanstack/react-table'
 import { supabase } from '../lib/supabase/client'
 import {
+  syncAllArtistsProfiles,
   syncArtistBiosFromLastFm,
   syncArtistCatalogsFromSpotify,
   syncFeaturedArtistsFromSpotify,
@@ -236,8 +237,8 @@ export function ArtistsAdminPage() {
             Artist profiles
           </h2>
           <p className="mt-1 text-sm text-neutral-500">
-            Supabase is the source of truth. Spotify is used for import and
-            sync.
+            Add artist = Spotify profile + Last.fm bio + discography in one
+            click. Bulk buttons below backfill existing artists.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -255,6 +256,34 @@ export function ArtistsAdminPage() {
             type="button"
             onClick={() => {
               setMessage(null)
+              setMessage('Filling all artist profiles… this can take a minute')
+              void syncAllArtistsProfiles()
+                .then((data) => {
+                  const failed = (data.results ?? []).filter((r) => !r.ok)
+                  setMessage(
+                    `Filled ${data.ok ?? 0}/${data.synced ?? 0} artists · ${data.withBio ?? 0} bios · ${data.releases ?? 0} releases` +
+                      (failed.length
+                        ? ` · ${failed.length} failed (${failed.map((f) => f.name).join(', ')})`
+                        : ''),
+                  )
+                  return load()
+                })
+                .catch((err: unknown) => {
+                  setMessage(
+                    err instanceof Error
+                      ? err.message
+                      : 'Fill all profiles failed',
+                  )
+                })
+            }}
+            className="bg-black px-4 py-2 text-xs font-bold text-white uppercase"
+          >
+            Fill all profiles
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMessage(null)
               void syncFeaturedArtistsFromSpotify(true)
                 .then(() => {
                   setMessage('Featured Spotify sync complete')
@@ -266,7 +295,7 @@ export function ArtistsAdminPage() {
                   )
                 })
             }}
-            className="bg-black px-4 py-2 text-xs font-bold text-white uppercase"
+            className="border border-neutral-300 bg-white px-4 py-2 text-xs font-bold uppercase"
           >
             Sync featured Spotify
           </button>

@@ -23,6 +23,7 @@ export function ShopProductPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [size, setSize] = useState<string | null>(null)
+  const [color, setColor] = useState<string | null>(null)
   const [quantity, setQuantity] = useState(1)
   const [activeImage, setActiveImage] = useState(0)
   const [busy, setBusy] = useState<'cart' | 'buy' | null>(null)
@@ -51,6 +52,8 @@ export function ShopProductPage() {
         setProduct(row)
         const details = getProductDetails(row)
         setSize(details.sizes?.[0] ?? null)
+        setColor(details.colors?.[0]?.name ?? null)
+        setActiveImage(0)
         const more = await fetchRelatedProducts(row)
         if (!cancelled) setRelated(more)
       } catch (err) {
@@ -69,17 +72,26 @@ export function ShopProductPage() {
   }, [productId])
 
   const details = product ? getProductDetails(product) : null
+  const colors = details?.colors ?? []
+  const selectedColor = colors.find((c) => c.name === color) ?? colors[0] ?? null
   const gallery = details?.gallery.length
     ? details.gallery
     : product?.image_url
       ? [product.image_url]
       : []
+  const heroImage =
+    selectedColor?.image ?? gallery[activeImage] ?? product?.image_url ?? null
   const needsSize = Boolean(details?.sizes?.length)
+  const needsColor = colors.length > 0
   const checkoutReady = product ? canCheckout(product) : false
 
   function validateSelection() {
     if (needsSize && !size) {
       setError('Choose a size to continue.')
+      return false
+    }
+    if (needsColor && !color) {
+      setError('Choose a color to continue.')
       return false
     }
     return true
@@ -89,7 +101,12 @@ export function ShopProductPage() {
     if (!product || !validateSelection()) return
     setError(null)
     setBusy('cart')
-    addItem(product, { size, quantity })
+    addItem(product, {
+      size,
+      color,
+      quantity,
+      image_url: heroImage,
+    })
     setAdded(true)
     setBusy(null)
     window.setTimeout(() => setAdded(false), 2000)
@@ -186,34 +203,46 @@ export function ShopProductPage() {
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-2 lg:gap-14">
           <div>
             <div className="aspect-[4/5] bg-neutral-100">
-              {gallery[activeImage] ? (
+              {heroImage ? (
                 <img
-                  src={gallery[activeImage]}
-                  alt={product.name}
+                  src={heroImage}
+                  alt={
+                    selectedColor
+                      ? `${product.name} — ${selectedColor.name}`
+                      : product.name
+                  }
                   className="h-full w-full object-cover"
                 />
               ) : null}
             </div>
             {gallery.length > 1 && (
               <div className="mt-3 grid grid-cols-4 gap-2">
-                {gallery.map((src, i) => (
-                  <button
-                    key={src}
-                    type="button"
-                    onClick={() => setActiveImage(i)}
-                    className={`aspect-square overflow-hidden border ${
-                      activeImage === i
-                        ? 'border-ct-orange'
-                        : 'border-ct-border'
-                    }`}
-                  >
-                    <img
-                      src={src}
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  </button>
-                ))}
+                {gallery.map((src, i) => {
+                  const colorForThumb = colors.find((c) => c.image === src)
+                  const selected =
+                    (selectedColor?.image ?? gallery[activeImage]) === src
+                  return (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => {
+                        setActiveImage(i)
+                        if (colorForThumb) setColor(colorForThumb.name)
+                      }}
+                      className={`aspect-square overflow-hidden border ${
+                        selected
+                          ? 'border-ct-orange'
+                          : 'border-ct-border'
+                      }`}
+                    >
+                      <img
+                        src={src}
+                        alt={colorForThumb?.name ?? ''}
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  )
+                })}
               </div>
             )}
           </div>
@@ -236,6 +265,34 @@ export function ShopProductPage() {
               <p className="mt-6 text-sm leading-relaxed text-black/70">
                 {product.description}
               </p>
+            )}
+
+            {needsColor && (
+              <div className="mt-8">
+                <p className="text-xs font-bold tracking-wide uppercase">
+                  Color{color ? ` — ${color}` : ''}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {colors.map((option) => (
+                    <button
+                      key={option.name}
+                      type="button"
+                      onClick={() => {
+                        setColor(option.name)
+                        const idx = gallery.indexOf(option.image)
+                        if (idx >= 0) setActiveImage(idx)
+                      }}
+                      className={`border px-3 py-2 text-xs font-bold tracking-wide uppercase transition-colors ${
+                        color === option.name
+                          ? 'border-black bg-black text-white'
+                          : 'border-ct-border bg-white text-black hover:border-black'
+                      }`}
+                    >
+                      {option.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
 
             {needsSize && details?.sizes && (

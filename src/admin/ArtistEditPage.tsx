@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase/client'
-import { syncArtistCatalogsFromSpotify } from '../lib/artists'
 import { ArtistImagePanel } from './ArtistImagePanel'
+import { GenrePicker } from './GenrePicker'
 import { SpotifyFixPanel } from './SpotifyFixPanel'
 
 type ArtistRow = {
@@ -30,13 +30,6 @@ type LinkedVideo = {
   youtube_video_id: string
 }
 
-function parseGenres(input: string): string[] {
-  return input
-    .split(',')
-    .map((g) => g.trim())
-    .filter(Boolean)
-}
-
 export function ArtistEditPage() {
   const { artistId } = useParams<{ artistId: string }>()
   const [artist, setArtist] = useState<ArtistRow | null>(null)
@@ -44,7 +37,6 @@ export function ArtistEditPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [syncing, setSyncing] = useState(false)
-  const [syncingCatalog, setSyncingCatalog] = useState(false)
   const [releaseCount, setReleaseCount] = useState(0)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +45,7 @@ export function ArtistEditPage() {
 
   const [name, setName] = useState('')
   const [bio, setBio] = useState('')
-  const [genresText, setGenresText] = useState('')
+  const [genres, setGenres] = useState<string[]>([])
   const [youtubeChannelId, setYoutubeChannelId] = useState('')
   const [instagramUrl, setInstagramUrl] = useState('')
   const [isVerified, setIsVerified] = useState(false)
@@ -98,7 +90,7 @@ export function ArtistEditPage() {
       setArtist(row)
       setName(row.name)
       setBio(row.bio ?? '')
-      setGenresText((row.genres ?? []).join(', '))
+      setGenres(row.genres ?? [])
       setYoutubeChannelId(row.youtube_channel_id ?? '')
       setInstagramUrl(row.instagram_url ?? '')
       setIsVerified(row.is_verified)
@@ -134,7 +126,7 @@ export function ArtistEditPage() {
       .update({
         name: trimmed,
         bio: bio.trim() || null,
-        genres: parseGenres(genresText),
+        genres,
         youtube_channel_id: youtubeChannelId.trim() || null,
         instagram_url: instagramUrl.trim() || null,
         is_verified: isVerified,
@@ -166,30 +158,23 @@ export function ArtistEditPage() {
       )
       if (fnError) throw fnError
       if (data?.error) throw new Error(data.error)
-      setMessage('Synced from Spotify (custom image preserved if locked)')
+      const parts = ['Spotify profile']
+      if (data?.bioFilled) parts.push('bio')
+      else if (data?.lastFmConfigured === false) {
+        parts.push('bio skipped (set LASTFM_API_KEY)')
+      } else {
+        parts.push('bio unchanged')
+      }
+      parts.push(`${data?.releases ?? 0} releases`)
+      if (data?.catalogError) {
+        setError(`Catalog: ${data.catalogError}`)
+      }
+      setMessage(`Synced — ${parts.join(' · ')}`)
       await load()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sync failed')
     } finally {
       setSyncing(false)
-    }
-  }
-
-  async function syncCatalog() {
-    if (!artistId || syncingCatalog) return
-    setSyncingCatalog(true)
-    setMessage(null)
-    setError(null)
-    try {
-      const data = await syncArtistCatalogsFromSpotify(artistId)
-      const row = data.results?.[0]
-      if (row && !row.ok) throw new Error(row.error || 'Catalog sync failed')
-      setMessage(`Catalog synced — ${row?.releases ?? data.releases ?? 0} releases`)
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Catalog sync failed')
-    } finally {
-      setSyncingCatalog(false)
     }
   }
 
@@ -224,9 +209,6 @@ export function ArtistEditPage() {
           <h2 className="mt-2 text-2xl font-black tracking-tight uppercase">
             Edit artist
           </h2>
-          <p className="mt-1 text-sm text-neutral-500">
-            Edits save to Supabase and show on the public profile.
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a
@@ -242,18 +224,11 @@ export function ArtistEditPage() {
             disabled={syncing}
             onClick={() => void syncFromSpotify()}
             className="bg-black px-3 py-2 text-xs font-bold text-white uppercase disabled:opacity-50"
+            title="Pulls Spotify profile, Last.fm bio (if empty), and discography"
           >
-            {syncing ? 'Syncing…' : 'Sync from Spotify'}
-          </button>
-          <button
-            type="button"
-            disabled={syncingCatalog || !artist.spotify_id}
-            onClick={() => void syncCatalog()}
-            className="border border-neutral-300 bg-white px-3 py-2 text-xs font-bold uppercase disabled:opacity-50"
-          >
-            {syncingCatalog
-              ? 'Catalog…'
-              : `Sync catalog (${releaseCount})`}
+            {syncing
+              ? 'Syncing…'
+              : `Sync all${releaseCount ? ` (${releaseCount})` : ''}`}
           </button>
           <button
             type="button"
@@ -343,20 +318,12 @@ export function ArtistEditPage() {
             />
           </label>
 
-          <label className="block">
+          <div>
             <span className="text-[10px] font-bold tracking-[0.18em] text-neutral-500 uppercase">
               Genres
             </span>
-            <input
-              value={genresText}
-              onChange={(e) => setGenresText(e.target.value)}
-              placeholder="hip hop, r&b, drill"
-              className="mt-2 w-full border border-neutral-300 px-3 py-2 text-sm"
-            />
-            <span className="mt-1 block text-xs text-neutral-400">
-              Comma-separated. Saved to Supabase as the live profile genres.
-            </span>
-          </label>
+            <GenrePicker value={genres} onChange={setGenres} />
+          </div>
 
           <label className="block">
             <span className="text-[10px] font-bold tracking-[0.18em] text-neutral-500 uppercase">

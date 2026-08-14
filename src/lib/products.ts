@@ -19,188 +19,185 @@ export type Product = {
 export type ProductDetails = {
   gallery: string[]
   sizes: string[] | null
+  /** Colorways — selecting one swaps the hero image */
+  colors?: Array<{ name: string; image: string }>
   highlights: string[]
   care: string | null
   shipping: string
+}
+
+export type ProductInput = {
+  name: string
+  description?: string | null
+  price: number
+  image_url?: string | null
+  category?: string
+  sku?: string | null
+  stripe_price_id?: string | null
+  fulfillment_type?: Product['fulfillment_type']
+  is_active?: boolean
+  display_order?: number
 }
 
 const PRODUCT_SELECT =
   'id, name, description, price, image_url, category, stripe_price_id, sku, fulfillment_type, pod_variant_id, is_active, display_order, created_at'
 
 const APPAREL_SIZES = ['XS', 'S', 'M', 'L', 'XL', 'XXL']
+const SHORT_SIZES = ['S', 'M', 'L', 'XL', 'XXL']
 const DEFAULT_SHIPPING =
   'Ships in 3–7 business days within the US & Canada. Tracking emailed after fulfillment.'
 
-/** Placeholder catalog for client preview until real products + Stripe go live. */
+/** Placeholder catalog using local CreaseTalk tee mockups until live products are added. */
 export const DEMO_PRODUCTS: Product[] = [
   {
-    id: 'demo-logo-tee',
-    name: 'CreaseTalk Logo Tee',
+    id: 'demo-tee-hustlers',
+    name: 'Hustlers Tee',
     description:
-      'Heavyweight black tee with the orange CreaseTalk mark. Cut for everyday wear — soft hand-feel, reinforced collar, and a print that holds up after wash cycles.',
-    price: 32,
-    image_url:
-      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1200&q=80',
+      'Cream oversized tee — CreaseTalk mark on the front, “Be careful how you treat hustlers…” quote on the back.',
+    price: 40,
+    image_url: '/shop/tee-hustlers-front.png',
     category: 'Apparel',
     stripe_price_id: null,
-    sku: 'CT-TEE-01',
+    sku: 'CT-TEE-HUSTLERS',
     fulfillment_type: 'manual',
     pod_variant_id: null,
     is_active: true,
     display_order: 1,
-    created_at: '2026-08-11T00:00:00.000Z',
+    created_at: '2026-08-14T00:00:00.000Z',
   },
   {
-    id: 'demo-hoodie',
-    name: 'Night Session Hoodie',
+    id: 'demo-tee-stack-black',
+    name: 'Dear Black Girl Tee',
     description:
-      'Oversized fleece for late drops and long mixes. Kangaroo pocket, brushed interior, and a quiet CreaseTalk chest hit.',
-    price: 68,
-    image_url:
-      'https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=1200&q=80',
+      'Statement tee with the Dear Black Girl back graphic. Placeholder mockup for the shop.',
+    price: 40,
+    image_url: '/shop/tee-stack-on-black.png',
     category: 'Apparel',
     stripe_price_id: null,
-    sku: 'CT-HOOD-01',
+    sku: 'CT-TEE-DBG',
     fulfillment_type: 'manual',
     pod_variant_id: null,
     is_active: true,
     display_order: 2,
-    created_at: '2026-08-11T00:00:00.000Z',
+    created_at: '2026-08-14T00:00:00.000Z',
   },
   {
-    id: 'demo-cap',
-    name: 'Signal Cap',
+    id: 'demo-tee-black-white',
+    name: 'CreaseTalk Black Mark Tee',
     description:
-      'Structured five-panel with embroidered CreaseTalk wordmark. Adjustable strap, breathable crown.',
-    price: 28,
-    image_url:
-      'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?auto=format&fit=crop&w=1200&q=80',
-    category: 'Accessories',
+      'Black tee with red CreaseTalk mark. Clean contrast for everyday fits.',
+    price: 35,
+    image_url: '/shop/tee-black-on-white.png',
+    category: 'Apparel',
     stripe_price_id: null,
-    sku: 'CT-CAP-01',
+    sku: 'CT-TEE-BLACK',
     fulfillment_type: 'manual',
     pod_variant_id: null,
     is_active: true,
     display_order: 3,
-    created_at: '2026-08-11T00:00:00.000Z',
+    created_at: '2026-08-14T00:00:00.000Z',
   },
   {
-    id: 'demo-tote',
-    name: 'Vinyl Run Tote',
+    id: 'demo-shorts-beware',
+    name: 'Beware of the Crease Shorts',
     description:
-      'Heavy canvas tote built for records, cables, and weekend runs. Interior pocket + reinforced straps.',
-    price: 24,
-    image_url:
-      'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=1200&q=80',
-    category: 'Accessories',
+      'Mesh athletic shorts with the Beware of the Crease crest and CREASE leg print. Four colorways — Black, Blue, Sage, Red.',
+    price: 45,
+    image_url: '/shop/shorts-black.png',
+    category: 'Apparel',
     stripe_price_id: null,
-    sku: 'CT-TOTE-01',
+    sku: 'CT-SHORTS-BEWARE',
     fulfillment_type: 'manual',
     pod_variant_id: null,
     is_active: true,
     display_order: 4,
-    created_at: '2026-08-11T00:00:00.000Z',
+    created_at: '2026-08-14T00:00:00.000Z',
   },
   {
-    id: 'demo-poster',
-    name: 'CreaseTalk City Poster',
+    id: 'demo-tee-mark',
+    name: 'CreaseTalk Isolated Mark',
     description:
-      '18×24 archival print — orange type on black. Ships flat in a protective mailer. Limited preview drop.',
-    price: 22,
-    image_url:
-      'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
-    category: 'Prints',
+      'Orange CreaseTalk mark treatment — placeholder art for upcoming colorways.',
+    price: 35,
+    image_url: '/shop/tee-mark.png',
+    category: 'Apparel',
     stripe_price_id: null,
-    sku: 'CT-POST-01',
+    sku: 'CT-TEE-MARK',
     fulfillment_type: 'manual',
     pod_variant_id: null,
     is_active: true,
     display_order: 5,
-    created_at: '2026-08-11T00:00:00.000Z',
-  },
-  {
-    id: 'demo-socks',
-    name: 'Studio Socks',
-    description:
-      'Two-pack crew socks with the CT stripe. Cushioned sole for long studio days.',
-    price: 18,
-    image_url:
-      'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?auto=format&fit=crop&w=1200&q=80',
-    category: 'Apparel',
-    stripe_price_id: null,
-    sku: 'CT-SOCK-01',
-    fulfillment_type: 'manual',
-    pod_variant_id: null,
-    is_active: true,
-    display_order: 6,
-    created_at: '2026-08-11T00:00:00.000Z',
+    created_at: '2026-08-14T00:00:00.000Z',
   },
 ]
 
 const DEMO_DETAILS: Record<string, ProductDetails> = {
-  'demo-logo-tee': {
+  'demo-tee-hustlers': {
     gallery: [
-      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1503341504253-dff4815485f1?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?auto=format&fit=crop&w=1200&q=80',
+      '/shop/tee-hustlers-front.png',
+      '/shop/tee-hustlers-back.png',
     ],
     sizes: APPAREL_SIZES,
     highlights: [
-      '6.5 oz heavyweight cotton',
-      'Screen-printed CreaseTalk mark',
-      'Unisex fit — size up for oversized',
+      'Front: CreaseTalk script mark',
+      'Back: Hustlers quote print',
+      'Oversized cream blank',
     ],
     care: 'Machine wash cold, inside out. Tumble dry low. Do not iron print.',
     shipping: DEFAULT_SHIPPING,
   },
-  'demo-hoodie': {
-    gallery: [
-      'https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1578587018452-892baccfdcfa?auto=format&fit=crop&w=1200&q=80',
-    ],
+  'demo-tee-stack-black': {
+    gallery: ['/shop/tee-stack-on-black.png'],
     sizes: APPAREL_SIZES,
     highlights: [
-      'Brushed fleece interior',
-      'Oversized street cut',
-      'Kangaroo pocket + ribbed cuffs',
+      'Dear Black Girl back graphic',
+      'Unisex fit — size up for oversized',
+      'CreaseTalk merch placeholder',
     ],
-    care: 'Wash cold, hang dry preferred.',
+    care: 'Machine wash cold, inside out. Tumble dry low. Do not iron print.',
     shipping: DEFAULT_SHIPPING,
   },
-  'demo-cap': {
-    gallery: [
-      'https://images.unsplash.com/photo-1588850561407-ed78c282e89b?auto=format&fit=crop&w=1200&q=80',
+  'demo-tee-black-white': {
+    gallery: ['/shop/tee-black-on-white.png'],
+    sizes: APPAREL_SIZES,
+    highlights: [
+      'Red CreaseTalk chest mark',
+      'Unisex fit — size up for oversized',
+      'CreaseTalk merch placeholder',
     ],
-    sizes: ['One size'],
-    highlights: ['Embroidered wordmark', 'Adjustable strap', 'Structured crown'],
-    care: 'Spot clean only.',
+    care: 'Machine wash cold, inside out. Tumble dry low. Do not iron print.',
     shipping: DEFAULT_SHIPPING,
   },
-  'demo-tote': {
+  'demo-shorts-beware': {
     gallery: [
-      'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=1200&q=80',
+      '/shop/shorts-black.png',
+      '/shop/shorts-blue.png',
+      '/shop/shorts-green.png',
+      '/shop/shorts-red.png',
     ],
-    sizes: null,
-    highlights: ['12 oz canvas', 'Interior zip pocket', 'Fits 12" records'],
-    care: 'Spot clean. Air dry.',
+    sizes: SHORT_SIZES,
+    colors: [
+      { name: 'Black', image: '/shop/shorts-black.png' },
+      { name: 'Blue', image: '/shop/shorts-blue.png' },
+      { name: 'Sage', image: '/shop/shorts-green.png' },
+      { name: 'Red', image: '/shop/shorts-red.png' },
+    ],
+    highlights: [
+      'Four colorways: Black, Blue, Sage, Red',
+      'Beware of the Crease crest + CREASE leg print',
+      'Mesh athletic cut with drawstring',
+    ],
+    care: 'Machine wash cold. Hang dry preferred.',
     shipping: DEFAULT_SHIPPING,
   },
-  'demo-poster': {
-    gallery: [
-      'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+  'demo-tee-mark': {
+    gallery: ['/shop/tee-mark.png'],
+    sizes: APPAREL_SIZES,
+    highlights: [
+      'Isolated mark artwork',
+      'Placeholder for upcoming colorways',
     ],
-    sizes: ['18×24'],
-    highlights: ['Archival matte stock', 'Ships flat', 'Numbered preview run'],
-    care: null,
-    shipping: 'Ships flat in a rigid mailer within 5 business days.',
-  },
-  'demo-socks': {
-    gallery: [
-      'https://images.unsplash.com/photo-1586350977771-b3b0abd50c82?auto=format&fit=crop&w=1200&q=80',
-    ],
-    sizes: ['S/M', 'L/XL'],
-    highlights: ['Two-pack', 'Cushioned sole', 'CT stripe detail'],
-    care: 'Machine wash warm. Tumble dry low.',
+    care: 'Machine wash cold, inside out. Tumble dry low. Do not iron print.',
     shipping: DEFAULT_SHIPPING,
   },
 }
@@ -256,10 +253,19 @@ export async function fetchActiveProducts(): Promise<Product[]> {
   return rows.length > 0 ? rows : DEMO_PRODUCTS
 }
 
+export async function fetchAllProductsForAdmin(): Promise<Product[]> {
+  const { data, error } = await supabase
+    .from('products')
+    .select(PRODUCT_SELECT)
+    .order('display_order', { ascending: true })
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data ?? []) as Product[]
+}
+
 export async function fetchProductById(id: string): Promise<Product | null> {
-  const demo = DEMO_PRODUCTS.find((p) => p.id === id)
-  if (demo) {
-    // Prefer live catalog when present; demo ids only resolve if catalog empty
+  if (id.startsWith('demo-')) {
     const catalog = await fetchActiveProducts()
     return catalog.find((p) => p.id === id) ?? null
   }
@@ -290,6 +296,90 @@ export async function fetchRelatedProducts(
     .slice(0, limit)
 }
 
+export async function createProduct(input: ProductInput): Promise<Product> {
+  const { data, error } = await supabase
+    .from('products')
+    .insert({
+      name: input.name.trim(),
+      description: input.description?.trim() || null,
+      price: input.price,
+      image_url: input.image_url?.trim() || null,
+      category: input.category?.trim() || 'Apparel',
+      sku: input.sku?.trim() || null,
+      stripe_price_id: input.stripe_price_id?.trim() || null,
+      fulfillment_type: input.fulfillment_type ?? 'manual',
+      is_active: input.is_active ?? true,
+      display_order: input.display_order ?? 0,
+    })
+    .select(PRODUCT_SELECT)
+    .single()
+  if (error) throw error
+  return data as Product
+}
+
+export async function updateProduct(
+  id: string,
+  input: Partial<ProductInput>,
+): Promise<Product> {
+  const patch: Record<string, unknown> = {}
+  if (input.name !== undefined) patch.name = input.name.trim()
+  if (input.description !== undefined) {
+    patch.description = input.description?.trim() || null
+  }
+  if (input.price !== undefined) patch.price = input.price
+  if (input.image_url !== undefined) {
+    patch.image_url = input.image_url?.trim() || null
+  }
+  if (input.category !== undefined) {
+    patch.category = input.category.trim() || 'Apparel'
+  }
+  if (input.sku !== undefined) patch.sku = input.sku?.trim() || null
+  if (input.stripe_price_id !== undefined) {
+    patch.stripe_price_id = input.stripe_price_id?.trim() || null
+  }
+  if (input.fulfillment_type !== undefined) {
+    patch.fulfillment_type = input.fulfillment_type
+  }
+  if (input.is_active !== undefined) patch.is_active = input.is_active
+  if (input.display_order !== undefined) {
+    patch.display_order = input.display_order
+  }
+
+  const { data, error } = await supabase
+    .from('products')
+    .update(patch)
+    .eq('id', id)
+    .select(PRODUCT_SELECT)
+    .single()
+  if (error) throw error
+  return data as Product
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function uploadProductImage(file: File): Promise<string> {
+  const ext =
+    file.type === 'image/png'
+      ? 'png'
+      : file.type === 'image/webp'
+        ? 'webp'
+        : file.type === 'image/gif'
+          ? 'gif'
+          : 'jpg'
+  const path = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ext}`
+  const { error } = await supabase.storage.from('product-images').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+    contentType: file.type,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from('product-images').getPublicUrl(path)
+  return data.publicUrl
+}
+
 export type CheckoutLine = {
   priceId: string
   quantity: number
@@ -305,7 +395,6 @@ export async function startCheckout(
   const { data, error } = await supabase.functions.invoke('create-checkout', {
     body: {
       items: lines,
-      // legacy single-item shape still accepted by the function
       priceId: lines[0]?.priceId,
       quantity: lines[0]?.quantity ?? 1,
       successUrl:

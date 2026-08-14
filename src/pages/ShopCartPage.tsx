@@ -76,7 +76,7 @@ export function ShopCartPage() {
             <ul className="mt-10 divide-y divide-ct-border border-y border-ct-border">
               {lines.map((line) => (
                 <li
-                  key={`${line.productId}-${line.size ?? ''}`}
+                  key={`${line.productId}-${line.size ?? ''}-${line.color ?? ''}`}
                   className="flex gap-4 py-5"
                 >
                   <Link
@@ -98,9 +98,11 @@ export function ShopCartPage() {
                     >
                       {line.name}
                     </Link>
-                    {line.size && (
+                    {(line.color || line.size) && (
                       <p className="mt-1 text-xs text-black/50">
-                        Size {line.size}
+                        {[line.color, line.size ? `Size ${line.size}` : null]
+                          .filter(Boolean)
+                          .join(' · ')}
                       </p>
                     )}
                     <p className="mt-1 text-sm font-bold">
@@ -115,6 +117,7 @@ export function ShopCartPage() {
                             setQuantity(
                               line.productId,
                               line.size,
+                              line.color,
                               line.quantity - 1,
                             )
                           }
@@ -132,6 +135,7 @@ export function ShopCartPage() {
                             setQuantity(
                               line.productId,
                               line.size,
+                              line.color,
                               line.quantity + 1,
                             )
                           }
@@ -143,7 +147,9 @@ export function ShopCartPage() {
                       <button
                         type="button"
                         aria-label="Remove item"
-                        onClick={() => removeItem(line.productId, line.size)}
+                        onClick={() =>
+                          removeItem(line.productId, line.size, line.color)
+                        }
                         className="p-2 text-black/45 hover:text-red-600"
                       >
                         <Trash2 className="size-4" />
